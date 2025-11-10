@@ -1,0 +1,53 @@
+parameters:
+    level: 5
+    paths:
+        - app
+        - database
+    bootstrapFiles:
+        - .phpstan-stubs.php
+    ignoreErrors:
+        # Laravel helper functions
+        - '#Call to unknown function: response\(\)#'
+        - '#Call to unknown function: auth\(\)#'
+        - '#Call to unknown function: now\(\)#'
+        - '#Call to unknown function: config\(\)#'
+        - '#Call to unknown function: [a-z_]+\(\)#'
+        
+        # Laravel Facades - any Illuminate facade
+        - '#Use of unknown class: Illuminate\\\\Support\\\\Facades\\\\[A-Za-z]+#'
+        - '#Use of unknown class: Illuminate\\\\Support\\\\Facades\\\\.+#'
+        
+        # Eloquent magic methods
+        - '#Call to unknown method: [A-Za-z\\\\]+::where\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::create\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::with\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::save\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::first\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::paginate\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::whereBetween\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::orderBy\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::find\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::findOrFail\(\)#'
+        - '#Call to unknown method: [A-Za-z\\\\]+::update\(\)#'
+        
+        # Eloquent relationships (dynamic properties)
+        - '#Undefined property: [A-Za-z\\\\]+::\$[a-z_]+#'
+        
+        # Illuminate classes - all Illuminate namespaces
+        - '#Use of unknown class: Illuminate\\\\[A-Za-z\\\\]+#'
+        - '#Use of unknown class: Illuminate\\\\Http\\\\Request#'
+        - '#Use of unknown class: Illuminate\\\\Http\\\\JsonResponse#'
+        - '#Use of unknown class: Illuminate\\\\Database\\\\Eloquent\\\\Builder#'
+        - '#Use of unknown class: Illuminate\\\\Routing\\\\Controller#'
+        - '#Use of unknown class: Illuminate\\\\Foundation\\\\Auth\\\\Access\\\\AuthorizesRequests#'
+        - '#Use of unknown class: Illuminate\\\\Foundation\\\\Validation\\\\ValidatesRequests#'
+        - '#Use of unknown class.*Seeder#'
+        
+        # Carbon
+        - '#Use of unknown class: Carbon\\\\Carbon#'
+        
+        # JWT Auth - Tymon JWT Auth package
+        - '#Use of unknown class: Tymon\\\\JWTAuth\\\\Facades\\\\JWTAuth#'
+        - '#Use of unknown class: Tymon\\\\JWTAuth\\\\Exceptions\\\\JWTException#'
+        - '#Use of unknown class: Tymon\\\\JWTAuth\\\\[A-Za-z\\\\]+#'
+
