@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, memo } from 'react'
-import { Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { positionAPI } from '../../services/api'
+import api, { positionAPI } from '../../services/api'
 
 const EmployeeForm = memo(function EmployeeForm({
   initialData = null,
@@ -134,11 +134,39 @@ const EmployeeForm = memo(function EmployeeForm({
     }
   }, [serverErrors])
 
-  const generateEmployeeNumber = () => {
-    // Generate random 4-digit number (1000-9999)
-    const randomNum = Math.floor(1000 + Math.random() * 9000)
-    const empNumber = randomNum.toString()
-    setForm((prev) => ({ ...prev, employee_number: empNumber }))
+  const generateEmployeeNumber = async () => {
+    try {
+      // Fetch all employees to get the last employee number
+      const response = await api.get('/employees', { params: { per_page: 1000 } })
+      const employees = response.data?.data || []
+      
+      if (employees.length === 0) {
+        // No employees yet, start with 1000
+        setForm((prev) => ({ ...prev, employee_number: '1000' }))
+        return
+      }
+      
+      // Extract all employee numbers and find the highest
+      const employeeNumbers = employees
+        .map(emp => parseInt(emp.employee_number))
+        .filter(num => !isNaN(num))
+      
+      if (employeeNumbers.length === 0) {
+        // No valid numbers found, start with 1000
+        setForm((prev) => ({ ...prev, employee_number: '1000' }))
+        return
+      }
+      
+      // Get the highest number and increment by 1
+      const maxNumber = Math.max(...employeeNumbers)
+      const nextNumber = maxNumber + 1
+      
+      setForm((prev) => ({ ...prev, employee_number: nextNumber.toString() }))
+    } catch (error) {
+      console.error('Error generating employee number:', error)
+      // Fallback to 1000 if API fails
+      setForm((prev) => ({ ...prev, employee_number: '1000' }))
+    }
   }
 
   // Fetch positions when department changes
@@ -199,6 +227,19 @@ const EmployeeForm = memo(function EmployeeForm({
     }
     
     return fallbackPositions['default'].map(p => ({ title: p }))
+  }
+
+  // Auto-capitalize text - converts to Title Case (First Letter of Each Word Capitalized)
+  const autoCapitalize = (text) => {
+    if (!text) return ''
+    return text
+      .toLowerCase()
+      .split(' ')
+      .map(word => {
+        if (word.length === 0) return word
+        return word.charAt(0).toUpperCase() + word.slice(1)
+      })
+      .join(' ')
   }
 
   const formatGovernmentId = (name, value) => {
@@ -409,7 +450,14 @@ const EmployeeForm = memo(function EmployeeForm({
           return newErrors
         }
       })
-    } else {
+    }
+    // Auto-capitalize name and address fields
+    else if (['first_name', 'middle_name', 'last_name', 'address'].includes(name)) {
+      const capitalizedValue = autoCapitalize(value)
+      setForm((prev) => ({ ...prev, [name]: capitalizedValue }))
+    }
+    // Default: no formatting
+    else {
       setForm((prev) => ({ ...prev, [name]: value }))
     }
   }
@@ -580,7 +628,7 @@ const EmployeeForm = memo(function EmployeeForm({
         <h3 className="text-lg font-semibold text-gray-800 mb-3">Employment</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Employee # <span className="text-gray-500 text-xs">(4 digits)</span></label>
+            <label className="block text-sm font-medium text-gray-700">Employee # <span className="text-gray-500 text-xs">(Auto-generated)</span></label>
             <div className="relative">
               <input 
                 ref={(el) => (errorRefs.current['employee_number'] = el)}
@@ -588,19 +636,9 @@ const EmployeeForm = memo(function EmployeeForm({
                 value={form.employee_number} 
                 onChange={handleChange} 
                 required 
-                readOnly={isEdit}
-                className={getInputClassName('employee_number', `mt-1 w-full border rounded px-3 py-2 ${isEdit ? 'bg-gray-50' : ''}`)} 
+                readOnly
+                className={getInputClassName('employee_number', 'mt-1 w-full border rounded px-3 py-2 bg-gray-50')} 
               />
-              {!isEdit && (
-                <button
-                  type="button"
-                  onClick={generateEmployeeNumber}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-600 hover:text-blue-800"
-                  title="Generate new number"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-              )}
             </div>
             {renderError('employee_number')}
           </div>

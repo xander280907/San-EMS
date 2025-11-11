@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { payrollAPI, employeeAPI } from '../services/api'
-import { DollarSign, FileText, Calendar, Filter, Unlock, Trash2 } from 'lucide-react'
+import { FileText, Calendar, Filter, Archive, RotateCcw } from 'lucide-react'
+
+// Custom Peso Icon Component
+const PesoIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <text x="4" y="18" fontFamily="Arial, sans-serif" fontSize="18" fontWeight="bold">₱</text>
+  </svg>
+)
 import PayrollForm from '../components/payroll/PayrollForm'
 import PayrollView from '../components/payroll/PayrollView'
 import { isAdmin } from '../utils/permissions'
@@ -18,6 +25,7 @@ export default function Payroll() {
   const [statusFilter, setStatusFilter] = useState('')
   const [periodFilter, setPeriodFilter] = useState('')
   const [employeeFilter, setEmployeeFilter] = useState('')
+  const [archivedFilter, setArchivedFilter] = useState('active') // 'active', 'archived', 'all'
 
   const [showProcess, setShowProcess] = useState(false)
   const [showView, setShowView] = useState(null)
@@ -47,7 +55,7 @@ export default function Payroll() {
 
   useEffect(() => {
     fetchPayrolls()
-  }, [page, search, statusFilter, periodFilter, employeeFilter])
+  }, [page, search, statusFilter, periodFilter, employeeFilter, archivedFilter])
 
   const fetchEmployees = async () => {
     try {
@@ -68,6 +76,13 @@ export default function Payroll() {
       if (statusFilter) params.status = statusFilter
       if (periodFilter) params.payroll_period = periodFilter
       if (employeeFilter) params.employee_id = employeeFilter
+      // Add archived filter
+      if (archivedFilter === 'archived') {
+        params.archived = 'true'
+      } else if (archivedFilter === 'all') {
+        params.archived = 'all'
+      }
+      // Default: active only (no archived param)
 
       const res = await payrollAPI.getAll(params)
       const raw = res.data
@@ -127,31 +142,31 @@ export default function Payroll() {
     }
   }
 
-  const handleUnlock = async (id) => {
-    if (!confirm('Are you sure you want to unlock this payroll? This will allow modifications or deletion.')) {
-      return
-    }
-    
-    try {
-      await payrollAPI.unlock(id)
-      await fetchPayrolls()
-      alert('Payroll unlocked successfully')
-    } catch (e) {
-      alert(e.response?.data?.error || 'Failed to unlock payroll')
-    }
-  }
-
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this payroll? This action cannot be undone.')) {
+  const handleArchive = async (id) => {
+    if (!confirm('Archive this payroll? You can restore it later from the Archived tab.')) {
       return
     }
     
     try {
       await payrollAPI.delete(id)
       await fetchPayrolls()
-      alert('Payroll deleted successfully')
+      alert('Payroll archived successfully!')
     } catch (e) {
-      alert(e.response?.data?.error || 'Failed to delete payroll')
+      alert(e.response?.data?.error || 'Failed to archive payroll')
+    }
+  }
+
+  const handleRestore = async (id) => {
+    if (!confirm('Restore this payroll?')) {
+      return
+    }
+    
+    try {
+      await payrollAPI.restore(id)
+      await fetchPayrolls()
+      alert('Payroll restored successfully!')
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to restore payroll')
     }
   }
 
@@ -207,14 +222,54 @@ export default function Payroll() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Payroll Management</h1>
+        <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
+          <PesoIcon className="w-8 h-8" />
+          Payroll Management
+        </h1>
         <button 
           onClick={() => { setShowProcess(true); setServerErrors(null) }} 
           className="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 flex items-center gap-2"
         >
-          <DollarSign className="w-4 h-4" />
-          Process Payroll
+          <PesoIcon className="w-4 h-4" />
+          Process Payslip
         </button>
+      </div>
+
+      {/* Archive Filter Tabs */}
+      <div className="bg-white rounded-lg shadow mb-4 p-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setArchivedFilter('active'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              archivedFilter === 'active' 
+                ? 'bg-blue-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Active Payroll
+          </button>
+          <button
+            onClick={() => { setArchivedFilter('archived'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              archivedFilter === 'archived' 
+                ? 'bg-orange-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Archive className="w-4 h-4" />
+            Archived
+          </button>
+          <button
+            onClick={() => { setArchivedFilter('all'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              archivedFilter === 'all' 
+                ? 'bg-gray-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            All Payroll
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -264,7 +319,7 @@ export default function Payroll() {
             onClick={() => { setSearch(''); setEmployeeFilter(''); setPeriodFilter(''); setStatusFilter(''); setPage(1) }} 
             className="px-4 py-2 border rounded hover:bg-gray-50"
           >
-            Reset
+            Reset Filters
           </button>
         </div>
       </div>
@@ -335,27 +390,27 @@ export default function Payroll() {
                         >
                           Payslip
                         </button>
-                        {/* Debug: Show user role */}
-                        {console.log('Rendering payroll row - Payroll ID:', payroll.id, 'is_locked:', payroll.is_locked, 'Type:', typeof payroll.is_locked)}
                         {isAdmin(user) && (
                           <>
-                            {payroll.is_locked ? (
+                            {payroll.deleted_at ? (
+                              // Archived payroll - show restore button
                               <button 
-                                className="px-3 py-1 border rounded hover:bg-yellow-50 text-yellow-700 flex items-center gap-1" 
-                                onClick={() => handleUnlock(payroll.id)}
-                                title="Unlock payroll"
+                                className="px-3 py-1 border rounded hover:bg-green-50 text-green-700 flex items-center gap-1" 
+                                onClick={() => handleRestore(payroll.id)}
+                                title="Restore payroll"
                               >
-                                <Unlock className="w-3 h-3" />
-                                Unlock
+                                <RotateCcw className="w-3 h-3" />
+                                Restore
                               </button>
                             ) : (
+                              // Active payroll - show archive button
                               <button 
-                                className="px-3 py-1 border rounded hover:bg-red-50 text-red-700 flex items-center gap-1" 
-                                onClick={() => handleDelete(payroll.id)}
-                                title="Delete payroll"
+                                className="px-3 py-1 border rounded hover:bg-orange-50 text-orange-700 flex items-center gap-1" 
+                                onClick={() => handleArchive(payroll.id)}
+                                title="Archive payroll"
                               >
-                                <Trash2 className="w-3 h-3" />
-                                Delete
+                                <Archive className="w-3 h-3" />
+                                Archive
                               </button>
                             )}
                           </>
@@ -373,9 +428,9 @@ export default function Payroll() {
         </div>
       </div>
 
-      {/* Process Payroll Modal */}
+      {/* Process Payslip Modal */}
       {showProcess && (
-        <Modal title="Process Payroll" onClose={() => setShowProcess(false)}>
+        <Modal title="Process Payslip" onClose={() => setShowProcess(false)}>
           <PayrollForm
             employees={employees}
             onSubmit={handleProcess}

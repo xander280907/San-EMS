@@ -17,6 +17,14 @@ class EmployeeController extends Controller
     {
         $query = Employee::with(['user', 'department']);
 
+        // Filter archived employees
+        if ($request->has('archived') && $request->archived === 'true') {
+            $query->onlyTrashed();
+        } elseif ($request->has('archived') && $request->archived === 'all') {
+            $query->withTrashed();
+        }
+        // Default: only active (non-archived) employees
+
         // Filter by department
         if ($request->has('department_id')) {
             $query->where('department_id', $request->department_id);
@@ -171,14 +179,27 @@ class EmployeeController extends Controller
     }
 
     /**
-     * Delete employee
+     * Archive employee (soft delete)
      */
     public function destroy($id)
     {
         $employee = Employee::findOrFail($id);
-        $employee->user->delete();
-        $employee->delete();
+        $employee->delete(); // Soft delete
 
-        return response()->json(['message' => 'Employee deleted successfully']);
+        return response()->json(['message' => 'Employee archived successfully']);
+    }
+
+    /**
+     * Restore archived employee
+     */
+    public function restore($id)
+    {
+        $employee = Employee::withTrashed()->findOrFail($id);
+        $employee->restore();
+
+        return response()->json([
+            'message' => 'Employee restored successfully',
+            'employee' => $employee->load(['user', 'department'])
+        ]);
     }
 }

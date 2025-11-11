@@ -594,7 +594,14 @@ export default function PayrollForm({ employees, onSubmit, onCancel, loading, se
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">SSS (4.5%)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              SSS Contribution
+              {formData.base_salary && (
+                <span className="text-xs text-blue-600 ml-1">
+                  (₱{parseFloat(formData.base_salary).toLocaleString()} salary bracket)
+                </span>
+              )}
+            </label>
             <input
               type="number"
               step="0.01"
@@ -604,10 +611,18 @@ export default function PayrollForm({ employees, onSubmit, onCancel, loading, se
               placeholder="0.00"
               className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed"
             />
+            <p className="text-xs text-gray-500 mt-1">Employee Share: 4.5% of basic salary</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">PhilHealth (2.25%)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              PhilHealth Contribution
+              {formData.base_salary && (
+                <span className="text-xs text-green-600 ml-1">
+                  (₱{parseFloat(formData.base_salary).toLocaleString()} salary bracket)
+                </span>
+              )}
+            </label>
             <input
               type="number"
               step="0.01"
@@ -617,10 +632,18 @@ export default function PayrollForm({ employees, onSubmit, onCancel, loading, se
               placeholder="0.00"
               className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed"
             />
+            <p className="text-xs text-gray-500 mt-1">Employee Share: 2.25% of basic salary (Min: ₱500, Max: ₱5,000)</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Pag-IBIG (2%, max ₱100)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Pag-IBIG Contribution
+              {formData.pagibig && parseFloat(formData.pagibig) >= 100 && (
+                <span className="text-xs text-orange-600 ml-1">
+                  (Maximum reached)
+                </span>
+              )}
+            </label>
             <input
               type="number"
               step="0.01"
@@ -630,10 +653,22 @@ export default function PayrollForm({ employees, onSubmit, onCancel, loading, se
               placeholder="0.00"
               className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed"
             />
+            <p className="text-xs text-gray-500 mt-1">2% of basic salary (Maximum: ₱100)</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Withholding Tax (5%)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Withholding Tax
+              {formData.base_salary && (() => {
+                const salary = parseFloat(formData.base_salary)
+                if (salary <= 20833) return <span className="text-xs text-gray-600 ml-1">(Tax Bracket: 0%)</span>
+                if (salary <= 33332) return <span className="text-xs text-purple-600 ml-1">(Tax Bracket: 15%)</span>
+                if (salary <= 66666) return <span className="text-xs text-purple-600 ml-1">(Tax Bracket: 20%)</span>
+                if (salary <= 166666) return <span className="text-xs text-purple-600 ml-1">(Tax Bracket: 25%)</span>
+                if (salary <= 666666) return <span className="text-xs text-purple-600 ml-1">(Tax Bracket: 30%)</span>
+                return <span className="text-xs text-purple-600 ml-1">(Tax Bracket: 35%)</span>
+              })()}
+            </label>
             <input
               type="number"
               step="0.01"
@@ -643,6 +678,7 @@ export default function PayrollForm({ employees, onSubmit, onCancel, loading, se
               placeholder="0.00"
               className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed"
             />
+            <p className="text-xs text-gray-500 mt-1">Based on graduated tax table</p>
           </div>
           
           <div>
@@ -740,7 +776,7 @@ export default function PayrollForm({ employees, onSubmit, onCancel, loading, se
           className="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
           title={duplicateCheck.exists ? 'Payroll already exists for this employee and period' : ''}
         >
-          {loading ? 'Processing...' : 'Process Payroll'}
+          {loading ? 'Processing...' : 'Process Payslip'}
         </button>
       </div>
     </form>

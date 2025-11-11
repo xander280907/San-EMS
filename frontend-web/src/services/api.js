@@ -76,7 +76,8 @@ export const employeeAPI = {
     }
     return api.post(`/employees/${id}?_method=PUT`, data)
   },
-  delete: (id) => api.delete(`/employees/${id}`),
+  delete: (id) => api.delete(`/employees/${id}`), // Archive employee
+  restore: (id) => api.post(`/employees/${id}/restore`), // Restore archived employee
 }
 
 // Payroll API
@@ -88,7 +89,8 @@ export const payrollAPI = {
   getEmployeePayrolls: (id) => api.get(`/payroll/employee/${id}`),
   generatePayslip: (id) => api.get(`/payroll/${id}/payslip`, { responseType: 'blob' }),
   unlock: (id) => api.post(`/payroll/${id}/unlock`),
-  delete: (id) => api.delete(`/payroll/${id}`),
+  delete: (id) => api.delete(`/payroll/${id}`), // Archive payroll
+  restore: (id) => api.post(`/payroll/${id}/restore`), // Restore archived payroll
 }
 
 // Attendance API
@@ -98,6 +100,8 @@ export const attendanceAPI = {
   clockOut: (data) => api.post('/attendance/clock-out', data),
   getEmployeeAttendance: (id) => api.get(`/attendance/employee/${id}`),
   getTodayStats: () => api.get('/attendance/stats/today'),
+  approveSelfie: (id, sessionType) => api.post(`/attendance/${id}/selfie/approve`, { session_type: sessionType }),
+  rejectSelfie: (id, sessionType, reason) => api.post(`/attendance/${id}/selfie/reject`, { session_type: sessionType, reason }),
 }
 
 // Leave API
@@ -112,11 +116,12 @@ export const leaveAPI = {
 
 // Department API
 export const departmentAPI = {
-  getAll: () => api.get('/departments'),
+  getAll: (params) => api.get('/departments', { params }),
   getById: (id) => api.get(`/departments/${id}`),
   create: (data) => api.post('/departments', data),
   update: (id, data) => api.put(`/departments/${id}`, data),
-  delete: (id) => api.delete(`/departments/${id}`),
+  delete: (id) => api.delete(`/departments/${id}`), // Archive department
+  restore: (id) => api.post(`/departments/${id}/restore`), // Restore archived department
 }
 
 // Position API

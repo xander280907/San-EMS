@@ -27,16 +27,6 @@ class DatabaseSeeder extends Seeder
             'permissions' => ['*'],
         ]);
 
-        $hrRole = Role::create([
-            'name' => 'hr',
-            'display_name' => 'Human Resources',
-            'description' => 'HR management access',
-            'permissions' => [
-                'employees.*', 'departments.*', 'payroll.*', 
-                'leaves.*', 'attendance.*', 'announcements.*', 
-                'recruitment.*', 'reports.*'
-            ],
-        ]);
 
         $employeeRole = Role::create([
             'name' => 'employee',
@@ -57,15 +47,6 @@ class DatabaseSeeder extends Seeder
             'email_verified_at' => now(),
         ]);
 
-        // Seed HR User
-        $hrUser = User::create([
-            'email' => 'hr@test.local',
-            'password' => Hash::make('password'),
-            'first_name' => 'HR',
-            'last_name' => 'User',
-            'role_id' => $hrRole->id,
-            'email_verified_at' => now(),
-        ]);
 
         // Seed Employee User
         $employeeUser = User::create([
@@ -87,7 +68,7 @@ class DatabaseSeeder extends Seeder
         $deptHR = Department::create([
             'name' => 'Human Resources',
             'description' => 'HR Department',
-            'manager_id' => $hrUser->id,
+            'manager_id' => $admin->id,
         ]);
 
         $deptFinance = Department::create([
@@ -111,17 +92,6 @@ class DatabaseSeeder extends Seeder
             'status' => 'active',
         ]);
 
-        // HR employee record
-        Employee::create([
-            'user_id' => $hrUser->id,
-            'employee_number' => 'EMP-HR001',
-            'department_id' => $deptHR->id,
-            'position' => 'HR Manager',
-            'employment_type' => 'full-time',
-            'hire_date' => now()->subYears(2),
-            'base_salary' => 40000.00,
-            'status' => 'active',
-        ]);
 
         // Regular employee record
         Employee::create([
@@ -228,7 +198,7 @@ class DatabaseSeeder extends Seeder
             'title' => 'Upcoming Holiday - November 30',
             'content' => 'Please be informed that November 30 (Bonifacio Day) is a regular holiday. All offices will be closed. Enjoy your day off!',
             'visibility' => 'all',
-            'created_by' => $hrUser->id,
+            'created_by' => $admin->id,
             'is_urgent' => true,
             'is_active' => true,
             'published_at' => now()->subDays(2),
@@ -249,7 +219,7 @@ class DatabaseSeeder extends Seeder
             'title' => 'HR: Benefits Enrollment Period',
             'content' => 'The annual benefits enrollment period is now open. Please review your benefits options and submit your selections by the end of the month. Contact HR for assistance.',
             'visibility' => 'all',
-            'created_by' => $hrUser->id,
+            'created_by' => $admin->id,
             'is_urgent' => false,
             'is_active' => true,
             'published_at' => now()->subDays(5),
@@ -258,7 +228,6 @@ class DatabaseSeeder extends Seeder
         if ($this->command) {
             $this->command->info('Database seeded successfully!');
             $this->command->info('Admin: admin@test.local / password');
-            $this->command->info('HR: hr@test.local / password');
             $this->command->info('Employee: employee@test.local / password');
         }
     }

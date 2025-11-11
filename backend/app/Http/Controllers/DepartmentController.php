@@ -11,9 +11,19 @@ class DepartmentController extends Controller
     /**
      * Get all departments
      */
-    public function index()
+    public function index(Request $request)
     {
-        $departments = Department::with(['manager.user'])->get();
+        $query = Department::with(['manager.user']);
+
+        // Filter archived departments
+        if ($request->has('archived') && $request->archived === 'true') {
+            $query->onlyTrashed();
+        } elseif ($request->has('archived') && $request->archived === 'all') {
+            $query->withTrashed();
+        }
+        // Default: only active (non-archived) departments
+
+        $departments = $query->get();
         return response()->json($departments);
     }
 
@@ -74,13 +84,27 @@ class DepartmentController extends Controller
     }
 
     /**
-     * Delete department
+     * Archive department (soft delete)
      */
     public function destroy($id)
     {
         $department = Department::findOrFail($id);
-        $department->delete();
+        $department->delete(); // Soft delete
 
-        return response()->json(['message' => 'Department deleted successfully']);
+        return response()->json(['message' => 'Department archived successfully']);
+    }
+
+    /**
+     * Restore archived department
+     */
+    public function restore($id)
+    {
+        $department = Department::withTrashed()->findOrFail($id);
+        $department->restore();
+
+        return response()->json([
+            'message' => 'Department restored successfully',
+            'department' => $department->load(['manager.user'])
+        ]);
     }
 }

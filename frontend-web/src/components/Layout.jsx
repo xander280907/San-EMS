@@ -4,9 +4,16 @@ import { useAuth } from '../context/AuthContext'
 import { hasPermission } from '../utils/permissions'
 import LoadingButton from './LoadingButton'
 import { 
-  Home, Users, DollarSign, Clock, Calendar, 
+  Home, Users, Clock, Calendar, 
   Building, Megaphone, Briefcase, BarChart, Wallet, UserCircle, User, Menu, X 
 } from 'lucide-react'
+
+// Custom Peso Icon Component
+const PesoIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <text x="4" y="18" fontFamily="Arial, sans-serif" fontSize="18" fontWeight="bold">₱</text>
+  </svg>
+)
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -39,7 +46,7 @@ export default function Layout() {
   const allMenuItems = [
     { path: '/dashboard', icon: Home, label: 'Dashboard', permission: 'dashboard' },
     { path: '/dashboard/employees', icon: Users, label: 'Employees', permission: 'employees' },
-    { path: '/dashboard/payroll', icon: DollarSign, label: 'Payroll', permission: 'payroll' },
+    { path: '/dashboard/payroll', icon: PesoIcon, label: 'Payroll', permission: 'payroll' },
     { path: '/dashboard/my-payslips', icon: Wallet, label: 'My Payslips', permission: 'myPayslips' },
     { path: '/dashboard/attendance', icon: Clock, label: 'Attendance', permission: 'attendance' },
     { path: '/dashboard/leaves', icon: Calendar, label: 'Leaves', permission: 'leaves' },

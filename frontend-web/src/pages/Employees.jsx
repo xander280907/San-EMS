@@ -3,7 +3,7 @@ import { employeeAPI, departmentAPI } from '../services/api'
 import EmployeeForm from '../components/employees/EmployeeForm'
 import EmployeeView from '../components/employees/EmployeeView'
 import { useAuth } from '../context/AuthContext'
-import { Users, Building2, UserCheck, UserX, Download, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react'
+import { Users, Building2, UserCheck, UserX, Download, ArrowUpDown, ArrowUp, ArrowDown, Search, Archive, RotateCcw } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -39,6 +39,7 @@ export default function Employees() {
   const [employmentTypeFilter, setEmploymentTypeFilter] = useState('')
   const [hireDateFrom, setHireDateFrom] = useState('')
   const [hireDateTo, setHireDateTo] = useState('')
+  const [archivedFilter, setArchivedFilter] = useState('active') // 'active', 'archived', 'all'
 
   const [showCreate, setShowCreate] = useState(false)
   const [showEdit, setShowEdit] = useState(null)
@@ -73,7 +74,7 @@ export default function Employees() {
 
   useEffect(() => {
     fetchEmployees()
-  }, [page, search, statusFilter, departmentFilter, employmentTypeFilter, hireDateFrom, hireDateTo, sortField, sortDirection])
+  }, [page, search, statusFilter, departmentFilter, employmentTypeFilter, hireDateFrom, hireDateTo, sortField, sortDirection, archivedFilter])
 
   const fetchDepartments = async () => {
     try {
@@ -100,6 +101,13 @@ export default function Employees() {
         params.sort_by = sortField
         params.sort_direction = sortDirection
       }
+      // Add archived filter
+      if (archivedFilter === 'archived') {
+        params.archived = 'true'
+      } else if (archivedFilter === 'all') {
+        params.archived = 'all'
+      }
+      // Default: active only (no archived param)
 
       const res = await employeeAPI.getAll(params)
       const raw = res.data
@@ -181,14 +189,29 @@ export default function Employees() {
     })
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this employee? This action cannot be undone.')) return
+  const handleArchive = async (id) => {
+    if (!confirm('Archive this employee? You can restore them later from the Archived tab.')) return
     setActionLoading(true)
     try {
       await employeeAPI.delete(id)
       await fetchEmployees()
+      alert('Employee archived successfully!')
     } catch (e) {
-      alert(e.response?.data?.error || 'Failed to delete employee')
+      alert(e.response?.data?.error || 'Failed to archive employee')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleRestore = async (id) => {
+    if (!confirm('Restore this employee?')) return
+    setActionLoading(true)
+    try {
+      await employeeAPI.restore(id)
+      await fetchEmployees()
+      alert('Employee restored successfully!')
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to restore employee')
     } finally {
       setActionLoading(false)
     }
@@ -393,6 +416,43 @@ export default function Employees() {
         </div>
       </div>
 
+      {/* Archive Filter Tabs */}
+      <div className="bg-white rounded-lg shadow mb-4 p-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setArchivedFilter('active'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              archivedFilter === 'active' 
+                ? 'bg-blue-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Active Employees
+          </button>
+          <button
+            onClick={() => { setArchivedFilter('archived'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              archivedFilter === 'archived' 
+                ? 'bg-orange-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Archive className="w-4 h-4" />
+            Archived
+          </button>
+          <button
+            onClick={() => { setArchivedFilter('all'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              archivedFilter === 'all' 
+                ? 'bg-gray-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            All Employees
+          </button>
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -454,6 +514,7 @@ export default function Employees() {
               setEmploymentTypeFilter('');
               setHireDateFrom('');
               setHireDateTo('');
+              setArchivedFilter('active');
               setPage(1);
             }} 
             className="px-4 py-2 border rounded hover:bg-gray-50 text-sm"
@@ -606,12 +667,36 @@ export default function Employees() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button className="px-3 py-1 border rounded hover:bg-gray-50 text-sm" onClick={() => setShowView(emp)}>View</button>
-                          {canManage && (
-                            <button className="px-3 py-1 border rounded hover:bg-blue-50 text-blue-700 text-sm" onClick={() => { setShowEdit(emp); setServerErrors(null) }}>Edit</button>
+                          <button className="px-3 py-1 border rounded hover:bg-gray-50 text-sm flex items-center gap-1" onClick={() => setShowView(emp)}>
+                            View
+                          </button>
+                          {canManage && !emp.deleted_at && (
+                            <button className="px-3 py-1 border rounded hover:bg-blue-50 text-blue-700 text-sm" onClick={() => { setShowEdit(emp); setServerErrors(null) }}>
+                              Edit
+                            </button>
                           )}
                           {roleName === 'admin' && (
-                            <button className="px-3 py-1 border rounded hover:bg-red-50 text-red-700 text-sm" disabled={actionLoading} onClick={() => handleDelete(emp.id)}>Delete</button>
+                            <>
+                              {emp.deleted_at ? (
+                                <button 
+                                  className="px-3 py-1 border rounded hover:bg-green-50 text-green-700 text-sm flex items-center gap-1" 
+                                  disabled={actionLoading} 
+                                  onClick={() => handleRestore(emp.id)}
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  Restore
+                                </button>
+                              ) : (
+                                <button 
+                                  className="px-3 py-1 border rounded hover:bg-orange-50 text-orange-700 text-sm flex items-center gap-1" 
+                                  disabled={actionLoading} 
+                                  onClick={() => handleArchive(emp.id)}
+                                >
+                                  <Archive className="w-3 h-3" />
+                                  Archive
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>

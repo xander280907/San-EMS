@@ -1,4 +1,4 @@
-import { DollarSign, User, Calendar, CreditCard, TrendingUp, TrendingDown, Wallet } from 'lucide-react'
+import { DollarSign, User, Calendar, CreditCard, TrendingUp, TrendingDown, Wallet, Clock, AlertCircle } from 'lucide-react'
 
 export default function PayrollView({ payroll }) {
   const formatCurrency = (amount) => {
@@ -61,6 +61,50 @@ export default function PayrollView({ payroll }) {
               <strong>Pay Date:</strong> {formatDate(payroll.pay_date)}
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Attendance Summary Section */}
+      <div className="bg-blue-50 p-5 rounded-lg border border-blue-200">
+        <div className="flex items-center gap-2 mb-4">
+          <Clock className="w-5 h-5 text-blue-700" />
+          <h4 className="text-lg font-semibold text-blue-800">Attendance Summary</h4>
+        </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Days Present - Calculate from working days and absences */}
+          <div className="bg-white p-3 rounded-lg border-2 border-green-200">
+            <p className="text-xs text-gray-600 mb-1">Days Present</p>
+            <p className="text-lg font-bold text-green-700">
+              {22 - (parseFloat(payroll.absent_days) || 0)} days
+            </p>
+          </div>
+          
+          {/* Absent Days - Always show */}
+          <div className="bg-white p-3 rounded-lg border-2 border-red-200">
+            <p className="text-xs text-gray-600 mb-1">Absent Days</p>
+            <p className="text-lg font-bold text-red-700">{parseFloat(payroll.absent_days) || 0} days</p>
+          </div>
+          
+          {/* Late Minutes - Always show */}
+          <div className="bg-white p-3 rounded-lg border-2 border-orange-200">
+            <p className="text-xs text-gray-600 mb-1">Late Minutes</p>
+            <p className="text-lg font-bold text-orange-700">{parseFloat(payroll.late_minutes) || 0} mins</p>
+          </div>
+          
+          {/* Overtime Hours - Always show */}
+          <div className="bg-white p-3 rounded-lg border-2 border-blue-200">
+            <p className="text-xs text-gray-600 mb-1">Overtime Hours</p>
+            <p className="text-lg font-bold text-blue-700">{parseFloat(payroll.overtime_hours || 0).toFixed(1)} hrs</p>
+          </div>
+          
+          {/* Holiday Days - Only show if > 0 */}
+          {payroll.holiday_days && parseFloat(payroll.holiday_days) > 0 && (
+            <div className="bg-white p-3 rounded-lg border-2 border-purple-200">
+              <p className="text-xs text-gray-600 mb-1">Holiday Days Worked</p>
+              <p className="text-lg font-bold text-purple-700">{payroll.holiday_days} days</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -147,6 +191,18 @@ export default function PayrollView({ payroll }) {
               <span className="font-semibold text-gray-900">{formatCurrency(payroll.withholding_tax)}</span>
             </div>
           )}
+          
+          {/* Always show Late Deduction */}
+          <div className="flex justify-between items-center pb-2 border-t pt-2 bg-orange-50">
+            <span className="text-sm text-gray-700 font-medium">Late Deduction ({parseFloat(payroll.late_minutes) || 0} mins)</span>
+            <span className="font-semibold text-orange-700">{formatCurrency(payroll.late_deduction || 0)}</span>
+          </div>
+          
+          {/* Always show Absent Deduction */}
+          <div className="flex justify-between items-center pb-2 border-t pt-2 bg-red-50">
+            <span className="text-sm text-gray-700 font-medium">Absent Deduction ({parseFloat(payroll.absent_days) || 0} days)</span>
+            <span className="font-semibold text-red-700">{formatCurrency(payroll.absent_deduction || 0)}</span>
+          </div>
           
           <div className="flex justify-between items-center pt-3 border-t-2 border-red-300">
             <span className="font-semibold text-red-800">Total Deductions</span>

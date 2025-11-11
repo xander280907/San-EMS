@@ -15,11 +15,10 @@ export default function Leaves() {
   
   // Role-based access control
   const isAdmin = user?.role === 'admin'
-  const isHR = user?.role === 'hr'
   const isEmployee = user?.role === 'employee'
-  const canManageLeaves = isAdmin || isHR
+  const canManageLeaves = isAdmin
   
-  // Admin and HR should default to 'all' tab since they don't have "My Requests"
+  // Admin should default to 'all' tab since they don't have "My Requests"
   const [tab, setTab] = useState(isEmployee ? 'my' : 'all') // 'my' | 'all'
   const [myItems, setMyItems] = useState([])
   const [allItems, setAllItems] = useState([])

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api, { attendanceAPI, departmentAPI } from '../services/api'
-import { Clock, LogIn, LogOut, Calendar, Users, UserCheck, UserX, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Timer, AlertCircle, X, BarChart3, TrendingUp, PieChart } from 'lucide-react'
+import { Clock, LogIn, LogOut, Calendar, Users, UserCheck, UserX, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, Timer, AlertCircle, X, BarChart3, TrendingUp, PieChart, Camera } from 'lucide-react'
+import CameraCapture from '../components/CameraCapture'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend } from 'chart.js'
 import { Bar, Line, Doughnut } from 'react-chartjs-2'
 import jsPDF from 'jspdf'
@@ -15,9 +16,8 @@ export default function Attendance() {
   
   // Role is returned as a string from the backend, not an object
   const isAdmin = user?.role === 'admin'
-  const isHR = user?.role === 'hr'
   const isEmployee = user?.role === 'employee'
-  const canViewAllAttendance = isAdmin || isHR
+  const canViewAllAttendance = isAdmin
   
   const [attendances, setAttendances] = useState([])
   const [loading, setLoading] = useState(true)
@@ -26,6 +26,15 @@ export default function Attendance() {
   const [clockingIn, setClockingIn] = useState(false)
   const [clockingOut, setClockingOut] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [selectedSession, setSelectedSession] = useState('morning') // 'morning' or 'afternoon'
+  const [showCamera, setShowCamera] = useState(false)
+  const [cameraAction, setCameraAction] = useState(null) // 'clockin' or 'clockout'
+  const [capturedSelfie, setCapturedSelfie] = useState(null)
+  const [showSelfieModal, setShowSelfieModal] = useState(false)
+  const [viewingSelfie, setViewingSelfie] = useState(null)
+  const [showRejectForm, setShowRejectForm] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [processingApproval, setProcessingApproval] = useState(false)
 
   // Filters
   const [dateFrom, setDateFrom] = useState('')
@@ -38,6 +47,10 @@ export default function Attendance() {
   // Sorting
   const [sortField, setSortField] = useState('')
   const [sortDirection, setSortDirection] = useState('asc')
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(10)
 
   // Stats
   const [stats, setStats] = useState({
@@ -80,23 +93,24 @@ export default function Attendance() {
 
   useEffect(() => {
     fetchAttendances()
+    setCurrentPage(1) // Reset to page 1 when filters change
   }, [dateFrom, dateTo, searchTerm, statusFilter, departmentFilter, sortField, sortDirection, user?.employee?.id])
 
-  // Auto-refresh stats every 30 seconds for real-time updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      console.log('Auto-refreshing attendance stats...')
-      if (canViewAllAttendance) {
-        fetchStats()
-        fetchChartData()
-      }
-      if (user?.employee?.id) {
-        checkTodayAttendance()
-      }
-    }, 30000) // 30 seconds
+  // Auto-refresh disabled - manual refresh only via button
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     console.log('Auto-refreshing attendance stats...')
+  //     if (canViewAllAttendance) {
+  //       fetchStats()
+  //       fetchChartData()
+  //     }
+  //     if (user?.employee?.id) {
+  //       checkTodayAttendance()
+  //     }
+  //   }, 30000) // 30 seconds
 
-    return () => clearInterval(interval)
-  }, [user?.employee?.id, canViewAllAttendance])
+  //   return () => clearInterval(interval)
+  // }, [user?.employee?.id, canViewAllAttendance])
 
   const fetchDepartments = async () => {
     try {
@@ -116,9 +130,11 @@ export default function Attendance() {
         return
       }
 
-      const today = new Date().toISOString().split('T')[0]
+      // Get local date instead of UTC date
+      const now = new Date()
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       console.log('=== Checking Today Attendance ===')
-      console.log('Today date:', today)
+      console.log('Today date (local):', today)
       console.log('User employee ID:', user.employee.id)
       
       // Use the general endpoint with date and employee filtering
@@ -159,6 +175,11 @@ export default function Attendance() {
       if (todayRecord) {
         console.log('Clock in:', todayRecord.clock_in)
         console.log('Clock out:', todayRecord.clock_out, 'Type:', typeof todayRecord.clock_out)
+        console.log('Morning clock in:', todayRecord.morning_clock_in)
+        console.log('Morning clock out:', todayRecord.morning_clock_out)
+        console.log('Afternoon clock in:', todayRecord.afternoon_clock_in)
+        console.log('Afternoon clock out:', todayRecord.afternoon_clock_out)
+        console.log('All keys:', Object.keys(todayRecord))
       }
       console.log('=== End Check ===')
       
@@ -334,12 +355,24 @@ export default function Attendance() {
   }
 
 
-  const handleClockIn = async () => {
+  const handleClockIn = () => {
+    // Show camera to capture selfie first
+    setCameraAction('clockin')
+    setShowCamera(true)
+  }
+
+  const handleClockInWithSelfie = async (selfieData) => {
+    setShowCamera(false)
     setClockingIn(true)
     try {
-      console.log('Attempting to clock in...')
+      // Get local date instead of UTC date
+      const now = new Date()
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      console.log(`Attempting to clock in for ${selectedSession} session with selfie...`)
       const response = await attendanceAPI.clockIn({
-        attendance_date: new Date().toISOString().split('T')[0]
+        attendance_date: today,
+        session: selectedSession,
+        selfie: selfieData
       })
       console.log('Clock in response:', response.data)
       
@@ -351,13 +384,14 @@ export default function Attendance() {
         setTodayAttendance(newAttendance)
       }
       
-      // Refresh both the list and stats
+      // Refresh today's attendance, list and stats
       await Promise.all([
+        checkTodayAttendance(),
         fetchAttendances(),
         fetchStats()
       ])
       
-      alert('Successfully clocked in!')
+      alert('Successfully clocked in with selfie verification!')
     } catch (err) {
       console.error('Clock in error:', err)
       console.error('Error response:', err.response?.data)
@@ -365,20 +399,32 @@ export default function Attendance() {
       alert(errorMsg)
     } finally {
       setClockingIn(false)
+      setCapturedSelfie(null)
     }
   }
 
-  const handleClockOut = async () => {
+  const handleClockOut = () => {
     if (!todayAttendance) {
       alert('You need to clock in first!')
       return
     }
-    
+    // Show camera to capture selfie first
+    setCameraAction('clockout')
+    setShowCamera(true)
+  }
+
+  const handleClockOutWithSelfie = async (selfieData) => {
+    setShowCamera(false)
     setClockingOut(true)
     try {
-      console.log('Attempting to clock out...')
+      // Get local date instead of UTC date
+      const now = new Date()
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      console.log(`Attempting to clock out for ${selectedSession} session with selfie...`)
       const response = await attendanceAPI.clockOut({
-        attendance_date: new Date().toISOString().split('T')[0]
+        attendance_date: today,
+        session: selectedSession,
+        selfie: selfieData
       })
       console.log('Clock out response:', response.data)
       
@@ -390,21 +436,37 @@ export default function Attendance() {
         setTodayAttendance(updatedAttendance)
       }
       
-      // Refresh both the list and stats
+      // Refresh today's attendance, list and stats
       await Promise.all([
+        checkTodayAttendance(),
         fetchAttendances(),
         fetchStats()
       ])
       
-      alert('Successfully clocked out!')
+      alert('Successfully clocked out with selfie verification!')
     } catch (err) {
       console.error('Clock out error:', err)
-      console.error('Error response:', err.response?.data)
       const errorMsg = err.response?.data?.message || err.response?.data?.error || 'Failed to clock out'
       alert(errorMsg)
     } finally {
       setClockingOut(false)
+      setCapturedSelfie(null)
     }
+  }
+
+  const handleCameraCapture = (imageData) => {
+    setCapturedSelfie(imageData)
+    if (cameraAction === 'clockin') {
+      handleClockInWithSelfie(imageData)
+    } else if (cameraAction === 'clockout') {
+      handleClockOutWithSelfie(imageData)
+    }
+  }
+
+  const handleCameraClose = () => {
+    setShowCamera(false)
+    setCameraAction(null)
+    setCapturedSelfie(null)
   }
 
   const formatTime = (timeString) => {
@@ -644,9 +706,9 @@ export default function Attendance() {
         dailyStats,
         workingHours: dailyStats.map(d => d.avgHours),
         breakdown: {
-          present: total > 0 ? parseFloat(((totalPresent / total) * 100).toFixed(1)) : 0,
-          late: total > 0 ? parseFloat(((totalLate / total) * 100).toFixed(1)) : 0,
-          absent: total > 0 ? parseFloat(((totalAbsent / total) * 100).toFixed(1)) : 0
+          present: totalPresent,
+          late: totalLate,
+          absent: totalAbsent
         }
       }
 
@@ -663,6 +725,146 @@ export default function Attendance() {
 
   return (
     <div>
+      {/* Camera Capture Modal */}
+      {showCamera && (
+        <CameraCapture 
+          onCapture={handleCameraCapture}
+          onClose={handleCameraClose}
+        />
+      )}
+      {/* Selfie Viewing Modal */}
+      {showSelfieModal && viewingSelfie && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-bold text-gray-800 mb-2">{viewingSelfie.label}</h2>
+            
+            {/* Status Badge */}
+            {viewingSelfie.status && (
+              <div className="mb-3">
+                <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
+                  viewingSelfie.status === 'approved' ? 'bg-green-100 text-green-800' :
+                  viewingSelfie.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                  'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {viewingSelfie.status.toUpperCase()}
+                </span>
+                {viewingSelfie.status === 'rejected' && viewingSelfie.reason && (
+                  <p className="text-sm text-red-600 mt-2">
+                    <strong>Reason:</strong> {viewingSelfie.reason}
+                  </p>
+                )}
+              </div>
+            )}
+            
+            <img src={viewingSelfie.image} alt="Selfie" className="w-full h-64 object-cover rounded mb-4" />
+            
+            {/* Reject Form */}
+            {showRejectForm ? (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Rejection Reason *
+                </label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Please provide a reason for rejection..."
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  rows="3"
+                />
+              </div>
+            ) : null}
+            
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              {!showRejectForm && viewingSelfie.status !== 'approved' && viewingSelfie.status !== 'rejected' && (
+                <>
+                  <button
+                    onClick={async () => {
+                      setProcessingApproval(true)
+                      try {
+                        await attendanceAPI.approveSelfie(viewingSelfie.attendanceId, viewingSelfie.sessionType)
+                        alert('Selfie approved successfully!')
+                        setShowSelfieModal(false)
+                        setViewingSelfie(null)
+                        await fetchAttendances()
+                      } catch (err) {
+                        alert(err.response?.data?.error || 'Failed to approve selfie')
+                      } finally {
+                        setProcessingApproval(false)
+                      }
+                    }}
+                    disabled={processingApproval}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-semibold"
+                  >
+                    ✓ Approve
+                  </button>
+                  <button
+                    onClick={() => setShowRejectForm(true)}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold"
+                  >
+                    ✗ Reject
+                  </button>
+                </>
+              )}
+              
+              {showRejectForm && (
+                <>
+                  <button
+                    onClick={async () => {
+                      if (!rejectionReason.trim()) {
+                        alert('Please provide a rejection reason')
+                        return
+                      }
+                      setProcessingApproval(true)
+                      try {
+                        await attendanceAPI.rejectSelfie(viewingSelfie.attendanceId, viewingSelfie.sessionType, rejectionReason)
+                        alert('Selfie rejected successfully!')
+                        setShowSelfieModal(false)
+                        setViewingSelfie(null)
+                        setShowRejectForm(false)
+                        setRejectionReason('')
+                        await fetchAttendances()
+                      } catch (err) {
+                        alert(err.response?.data?.error || 'Failed to reject selfie')
+                      } finally {
+                        setProcessingApproval(false)
+                      }
+                    }}
+                    disabled={processingApproval || !rejectionReason.trim()}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-semibold"
+                  >
+                    Submit Rejection
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowRejectForm(false)
+                      setRejectionReason('')
+                    }}
+                    className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+              
+              {!showRejectForm && (
+                <button
+                  onClick={() => {
+                    setShowSelfieModal(false)
+                    setViewingSelfie(null)
+                    setShowRejectForm(false)
+                    setRejectionReason('')
+                  }}
+                  className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Attendance</h1>
@@ -722,131 +924,226 @@ export default function Attendance() {
             )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div 
-          onClick={() => handleCardClick('present')}
-          className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow cursor-pointer"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Present Today</p>
-              <p className="text-2xl font-bold text-green-700 mt-1">{stats.presentToday}</p>
-              <p className="text-xs text-gray-500 mt-1">Click to view details</p>
+            <div 
+              onClick={() => handleCardClick('present')}
+              className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow cursor-pointer"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">Present Today</p>
+                  <p className="text-2xl font-bold text-green-700 mt-1">{stats.presentToday}</p>
+                  <p className="text-xs text-gray-500 mt-1">Click to view details</p>
+                </div>
+                <div className="bg-green-500 p-3 rounded-full">
+                  <UserCheck className="w-6 h-6 text-white" />
+                </div>
+              </div>
             </div>
-            <div className="bg-green-500 p-3 rounded-full">
-              <UserCheck className="w-6 h-6 text-white" />
+            <div 
+              onClick={() => handleCardClick('late')}
+              className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow cursor-pointer"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">Late Arrivals</p>
+                  <p className="text-2xl font-bold text-orange-700 mt-1">{stats.lateToday}</p>
+                  <p className="text-xs text-gray-500 mt-1">Click to view details</p>
+                </div>
+                <div className="bg-orange-500 p-3 rounded-full">
+                  <AlertCircle className="w-6 h-6 text-white" />
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div 
-          onClick={() => handleCardClick('late')}
-          className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow cursor-pointer"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Late Arrivals</p>
-              <p className="text-2xl font-bold text-orange-700 mt-1">{stats.lateToday}</p>
-              <p className="text-xs text-gray-500 mt-1">Click to view details</p>
+            <div className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">Total Hours Today</p>
+                  <p className="text-2xl font-bold text-blue-700 mt-1">{stats.totalHoursToday.toFixed(1)}h</p>
+                  <p className="text-xs text-gray-500 mt-1">All employees</p>
+                </div>
+                <div className="bg-blue-500 p-3 rounded-full">
+                  <Timer className="w-6 h-6 text-white" />
+                </div>
+              </div>
             </div>
-            <div className="bg-orange-500 p-3 rounded-full">
-              <AlertCircle className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Total Hours Today</p>
-              <p className="text-2xl font-bold text-blue-700 mt-1">{stats.totalHoursToday.toFixed(1)}h</p>
-              <p className="text-xs text-gray-500 mt-1">All employees</p>
-            </div>
-            <div className="bg-blue-500 p-3 rounded-full">
-              <Timer className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-        <div 
-          onClick={() => handleCardClick('absent')}
-          className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow cursor-pointer"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 font-medium">Absences</p>
-              <p className="text-2xl font-bold text-red-700 mt-1">{stats.absences}</p>
-              <p className="text-xs text-gray-500 mt-1">Click to view details</p>
-            </div>
-            <div className="bg-red-500 p-3 rounded-full">
-              <UserX className="w-6 h-6 text-white" />
-            </div>
-          </div>
+            <div 
+              onClick={() => handleCardClick('absent')}
+              className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow cursor-pointer"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">Absences</p>
+                  <p className="text-2xl font-bold text-red-700 mt-1">{stats.absences}</p>
+                  <p className="text-xs text-gray-500 mt-1">Click to view details</p>
+                </div>
+                <div className="bg-red-500 p-3 rounded-full">
+                  <UserX className="w-6 h-6 text-white" />
+                </div>
+              </div>
             </div>
           </div>
         </>
       )}
 
-      {/* Clock In/Out Section (Employee Only) */}
+      {/* Clock In/Out Section with Dual Sessions (Employee Only) */}
       {isEmployee && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">Today's Attendance</h2>
           
-          {todayAttendance ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <LogIn className="w-5 h-5 text-green-600" />
-                    <span className="font-semibold text-green-800">Clocked In</span>
-                  </div>
-                  <p className="text-2xl font-bold text-green-700">
-                    {formatTime(todayAttendance.clock_in)}
-                  </p>
-                </div>
-                
-                {todayAttendance.clock_out && todayAttendance.clock_out !== null && todayAttendance.clock_out !== 'null' ? (
-                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <LogOut className="w-5 h-5 text-blue-600" />
-                      <span className="font-semibold text-blue-800">Clocked Out</span>
+          {/* Session Selection */}
+          <div className="mb-4 flex gap-2">
+            <button
+              onClick={() => setSelectedSession('morning')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                selectedSession === 'morning'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Morning Session
+            </button>
+            <button
+              onClick={() => setSelectedSession('afternoon')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                selectedSession === 'afternoon'
+                  ? 'bg-orange-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Afternoon Session
+            </button>
+          </div>
+
+          {/* Morning Session Status */}
+          <div className="mb-4 p-4 border-2 border-blue-200 rounded-lg bg-blue-50">
+            <h3 className="font-semibold text-blue-900 mb-3">Morning Session (AM)</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {todayAttendance?.morning_clock_in ? (
+                <>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <LogIn className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-medium text-green-800">Clock In</span>
                     </div>
-                    <p className="text-2xl font-bold text-blue-700">
-                      {formatTime(todayAttendance.clock_out)}
+                    <p className="text-lg font-bold text-green-700">
+                      {formatTime(todayAttendance.morning_clock_in)}
                     </p>
-                    {todayAttendance.hours_worked && (
-                      <p className="text-sm text-blue-600 mt-1">
-                        {todayAttendance.hours_worked} hours worked
+                  </div>
+                  {todayAttendance.morning_clock_out ? (
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <LogOut className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-800">Clock Out</span>
+                      </div>
+                      <p className="text-lg font-bold text-blue-700">
+                        {formatTime(todayAttendance.morning_clock_out)}
                       </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock className="w-5 h-5 text-yellow-600" />
-                      <span className="font-semibold text-yellow-800">Ready to Clock Out</span>
+                      <p className="text-xs text-blue-600 mt-1">
+                        {todayAttendance.morning_hours}h worked
+                      </p>
                     </div>
-                    <p className="text-sm text-gray-600 mb-3">Click the button below to clock out</p>
-                    <button
-                      onClick={handleClockOut}
-                      disabled={clockingOut}
-                      className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      {clockingOut ? 'Clocking Out...' : 'Clock Out Now'}
-                    </button>
+                  ) : (
+                    <div className="flex items-center">
+                      <span className="text-sm text-gray-600 italic">Not clocked out yet</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="col-span-2 text-center text-gray-500 italic py-2">
+                  No morning attendance
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Afternoon Session Status */}
+          <div className="mb-4 p-4 border-2 border-orange-200 rounded-lg bg-orange-50">
+            <h3 className="font-semibold text-orange-900 mb-3">Afternoon Session (PM)</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {todayAttendance?.afternoon_clock_in ? (
+                <>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <LogIn className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-medium text-green-800">Clock In</span>
+                    </div>
+                    <p className="text-lg font-bold text-green-700">
+                      {formatTime(todayAttendance.afternoon_clock_in)}
+                    </p>
                   </div>
-                )}
+                  {todayAttendance.afternoon_clock_out ? (
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <LogOut className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-800">Clock Out</span>
+                      </div>
+                      <p className="text-lg font-bold text-blue-700">
+                        {formatTime(todayAttendance.afternoon_clock_out)}
+                      </p>
+                      <p className="text-xs text-blue-600 mt-1">
+                        {todayAttendance.afternoon_hours}h worked
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center">
+                      <span className="text-sm text-gray-600 italic">Not clocked out yet</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="col-span-2 text-center text-gray-500 italic py-2">
+                  No afternoon attendance
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Total Hours */}
+          {todayAttendance && (todayAttendance.morning_hours > 0 || todayAttendance.afternoon_hours > 0) && (
+            <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="font-medium text-gray-700">Total Hours Today:</span>
+                <span className="text-xl font-bold text-gray-900">
+                  {(parseFloat(todayAttendance.morning_hours || 0) + parseFloat(todayAttendance.afternoon_hours || 0)).toFixed(2)}h
+                </span>
               </div>
             </div>
-          ) : (
-            <div className="text-center py-6">
-              <p className="text-gray-600 mb-4">You haven't clocked in today.</p>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-3">
+            {/* Clock In Button */}
+            {((selectedSession === 'morning' && !todayAttendance?.morning_clock_in) ||
+              (selectedSession === 'afternoon' && !todayAttendance?.afternoon_clock_in)) && (
               <button
                 onClick={handleClockIn}
                 disabled={clockingIn}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
+                className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-semibold"
               >
                 <LogIn className="w-5 h-5" />
-                {clockingIn ? 'Clocking In...' : 'Clock In'}
+                {clockingIn ? 'Clocking In...' : `Clock In (${selectedSession === 'morning' ? 'AM' : 'PM'})`}
               </button>
-            </div>
+            )}
+
+            {/* Clock Out Button */}
+            {((selectedSession === 'morning' && todayAttendance?.morning_clock_in && !todayAttendance?.morning_clock_out) ||
+              (selectedSession === 'afternoon' && todayAttendance?.afternoon_clock_in && !todayAttendance?.afternoon_clock_out)) && (
+              <button
+                onClick={handleClockOut}
+                disabled={clockingOut}
+                className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-semibold"
+              >
+                <LogOut className="w-5 h-5" />
+                {clockingOut ? 'Clocking Out...' : `Clock Out (${selectedSession === 'morning' ? 'AM' : 'PM'})`}
+              </button>
+            )}
+          </div>
+
+          {/* Helper Message */}
+          {!todayAttendance && (
+            <p className="text-center text-gray-500 text-sm mt-4">
+              Select a session above and click Clock In to start tracking your attendance
+            </p>
           )}
         </div>
       )}
@@ -854,83 +1151,76 @@ export default function Attendance() {
       {/* Filters (Admin/HR Only) */}
       {canViewAllAttendance && (
         <div className="bg-white rounded-lg shadow p-4 mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
-          <div className="relative lg:col-span-2">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
+            <div className="relative lg:col-span-2">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                id="attendance-search"
+                name="search"
+                type="text"
+                placeholder="Search employee..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && fetchAttendances()}
+                className="w-full pl-10 pr-3 py-2 border rounded"
+              />
+            </div>
+            <select 
+              id="attendance-department-filter"
+              name="department"
+              value={departmentFilter} 
+              onChange={(e) => setDepartmentFilter(e.target.value)} 
+              className="border rounded px-3 py-2"
+            >
+              <option value="">All Departments</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <select 
+              id="attendance-status-filter"
+              name="status"
+              value={statusFilter} 
+              onChange={(e) => setStatusFilter(e.target.value)} 
+              className="border rounded px-3 py-2"
+            >
+              <option value="">All Status</option>
+              <option value="present">Present</option>
+              <option value="absent">Absent</option>
+            </select>
             <input
-              id="attendance-search"
-              name="search"
-              type="text"
-              placeholder="Search employee..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && fetchAttendances()}
-              className="w-full pl-10 pr-3 py-2 border rounded"
+              id="attendance-date-from"
+              name="dateFrom"
+              type="date"
+              placeholder="From Date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="border rounded px-3 py-2"
+            />
+            <input
+              id="attendance-date-to"
+              name="dateTo"
+              type="date"
+              placeholder="To Date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="border rounded px-3 py-2"
             />
           </div>
-          <select 
-            id="attendance-department-filter"
-            name="department"
-            value={departmentFilter} 
-            onChange={(e) => setDepartmentFilter(e.target.value)} 
-            className="border rounded px-3 py-2"
-          >
-            <option value="">All Departments</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-          <select 
-            id="attendance-status-filter"
-            name="status"
-            value={statusFilter} 
-            onChange={(e) => setStatusFilter(e.target.value)} 
-            className="border rounded px-3 py-2"
-          >
-            <option value="">All Status</option>
-            <option value="present">Present</option>
-            <option value="absent">Absent</option>
-          </select>
-          <input
-            id="attendance-date-from"
-            name="dateFrom"
-            type="date"
-            placeholder="From Date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border rounded px-3 py-2"
-          />
-          <input
-            id="attendance-date-to"
-            name="dateTo"
-            type="date"
-            placeholder="To Date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border rounded px-3 py-2"
-          />
-        </div>
-        <div className="mt-3 flex gap-3">
-          <button
-            onClick={fetchAttendances}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2 text-sm"
-          >
-            <Search className="w-4 h-4" />
-            Search
-          </button>
-          <button
-            onClick={() => {
-              setSearchTerm('')
-              setDepartmentFilter('')
-              setStatusFilter('')
-              setDateFrom('')
-              setDateTo('')
-            }}
-            className="px-4 py-2 border rounded hover:bg-gray-50 text-sm"
-          >
-            Reset Filters
-          </button>
-        </div>
+          <div className="mt-3 flex gap-3">
+            <button
+              onClick={() => {
+                setSearchTerm('')
+                setDepartmentFilter('')
+                setStatusFilter('')
+                setDateFrom('')
+                setDateTo('')
+              }}
+              className="px-4 py-2 border rounded hover:bg-gray-50 text-sm"
+            >
+              Reset Filters
+            </button>
+          </div>
         </div>
       )}
 
@@ -954,101 +1244,265 @@ export default function Attendance() {
             <p className="text-gray-600">No attendance records found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th
-                    onClick={() => handleSort('date')}
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Date
-                      {getSortIcon('date')}
-                    </div>
-                  </th>
-                  {canViewAllAttendance && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
                     <th
-                      onClick={() => handleSort('employee')}
+                      onClick={() => handleSort('date')}
                       className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
                     >
                       <div className="flex items-center gap-1">
-                        Employee
-                        {getSortIcon('employee')}
+                        Date
+                        {getSortIcon('date')}
                       </div>
                     </th>
-                  )}
-                  <th
-                    onClick={() => handleSort('clock_in')}
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Clock In
-                      {getSortIcon('clock_in')}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('clock_out')}
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Clock Out
-                      {getSortIcon('clock_out')}
-                    </div>
-                  </th>
-                  <th
-                    onClick={() => handleSort('hours_worked')}
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                  >
-                    <div className="flex items-center gap-1">
-                      Hours
-                      {getSortIcon('hours_worked')}
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {attendances.map((attendance) => (
-                  <tr key={attendance.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {formatDate(attendance.attendance_date || attendance.created_at)}
-                    </td>
                     {canViewAllAttendance && (
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {attendance.employee?.user 
-                          ? `${attendance.employee.user.first_name} ${attendance.employee.user.last_name}`
-                          : `Employee #${attendance.employee_id}`}
-                      </td>
+                      <th
+                        onClick={() => handleSort('employee')}
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                      >
+                        <div className="flex items-center gap-1">
+                          Employee
+                          {getSortIcon('employee')}
+                        </div>
+                      </th>
                     )}
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {formatTime(attendance.clock_in)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {formatTime(attendance.clock_out)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {attendance.hours_worked ? `${attendance.hours_worked}h` : '-'}
-                      {attendance.overtime_hours && parseFloat(attendance.overtime_hours) > 0 && (
-                        <span className="text-orange-600 ml-1">
-                          (+{attendance.overtime_hours}h OT)
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                        attendance.clock_in
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {attendance.clock_in ? 'Present' : 'Absent'}
-                      </span>
-                    </td>
+                    <th
+                      onClick={() => handleSort('clock_in')}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    >
+                      <div className="flex items-center gap-1">
+                        Clock In
+                        {getSortIcon('clock_in')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort('clock_out')}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    >
+                      <div className="flex items-center gap-1">
+                        Clock Out
+                        {getSortIcon('clock_out')}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort('hours_worked')}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    >
+                      <div className="flex items-center gap-1">
+                        Hours
+                        {getSortIcon('hours_worked')}
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    {canViewAllAttendance && (
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Selfie</th>
+                    )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {attendances
+                    .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                    .map((attendance) => (
+                      <tr key={attendance.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {formatDate(attendance.attendance_date || attendance.created_at)}
+                        </td>
+                        {canViewAllAttendance && (
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {attendance.employee?.user 
+                              ? `${attendance.employee.user.first_name} ${attendance.employee.user.last_name}`
+                              : `Employee #${attendance.employee_id}`}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {formatTime(attendance.clock_in)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {formatTime(attendance.clock_out)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {attendance.hours_worked ? `${attendance.hours_worked}h` : '-'}
+                          {attendance.overtime_hours && parseFloat(attendance.overtime_hours) > 0 && (
+                            <span className="text-orange-600 ml-1">
+                              (+{attendance.overtime_hours}h OT)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
+                            attendance.clock_in
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {attendance.clock_in ? 'Present' : 'Absent'}
+                          </span>
+                        </td>
+                        {canViewAllAttendance && (
+                          <td className="px-4 py-3">
+                            <div className="flex gap-1 flex-wrap">
+                              {attendance.morning_clock_in_selfie && (
+                                <button
+                                  onClick={() => {
+                                    setViewingSelfie({ 
+                                      image: attendance.morning_clock_in_selfie, 
+                                      label: 'Morning Clock In',
+                                      status: attendance.morning_clock_in_selfie_status || 'pending',
+                                      reason: attendance.morning_clock_in_selfie_reason,
+                                      attendanceId: attendance.id,
+                                      sessionType: 'morning_clock_in'
+                                    })
+                                    setShowSelfieModal(true)
+                                  }}
+                                  className={`p-1 rounded flex flex-col items-center ${
+                                    attendance.morning_clock_in_selfie_status === 'approved' ? 'bg-green-100' :
+                                    attendance.morning_clock_in_selfie_status === 'rejected' ? 'bg-red-100' :
+                                    'hover:bg-blue-100'
+                                  }`}
+                                  title={`View Morning Clock In Selfie - ${attendance.morning_clock_in_selfie_status || 'pending'}`}
+                                >
+                                  <Camera className={`w-4 h-4 ${
+                                    attendance.morning_clock_in_selfie_status === 'approved' ? 'text-green-600' :
+                                    attendance.morning_clock_in_selfie_status === 'rejected' ? 'text-red-600' :
+                                    'text-blue-600'
+                                  }`} />
+                                  <span className="text-xs">AM In</span>
+                                </button>
+                              )}
+                              {attendance.morning_clock_out_selfie && (
+                                <button
+                                  onClick={() => {
+                                    setViewingSelfie({ 
+                                      image: attendance.morning_clock_out_selfie, 
+                                      label: 'Morning Clock Out',
+                                      status: attendance.morning_clock_out_selfie_status || 'pending',
+                                      reason: attendance.morning_clock_out_selfie_reason,
+                                      attendanceId: attendance.id,
+                                      sessionType: 'morning_clock_out'
+                                    })
+                                    setShowSelfieModal(true)
+                                  }}
+                                  className={`p-1 rounded flex flex-col items-center ${
+                                    attendance.morning_clock_out_selfie_status === 'approved' ? 'bg-green-100' :
+                                    attendance.morning_clock_out_selfie_status === 'rejected' ? 'bg-red-100' :
+                                    'hover:bg-green-100'
+                                  }`}
+                                  title={`View Morning Clock Out Selfie - ${attendance.morning_clock_out_selfie_status || 'pending'}`}
+                                >
+                                  <Camera className={`w-4 h-4 ${
+                                    attendance.morning_clock_out_selfie_status === 'approved' ? 'text-green-600' :
+                                    attendance.morning_clock_out_selfie_status === 'rejected' ? 'text-red-600' :
+                                    'text-green-600'
+                                  }`} />
+                                  <span className="text-xs">AM Out</span>
+                                </button>
+                              )}
+                              {attendance.afternoon_clock_in_selfie && (
+                                <button
+                                  onClick={() => {
+                                    setViewingSelfie({ 
+                                      image: attendance.afternoon_clock_in_selfie, 
+                                      label: 'Afternoon Clock In',
+                                      status: attendance.afternoon_clock_in_selfie_status || 'pending',
+                                      reason: attendance.afternoon_clock_in_selfie_reason,
+                                      attendanceId: attendance.id,
+                                      sessionType: 'afternoon_clock_in'
+                                    })
+                                    setShowSelfieModal(true)
+                                  }}
+                                  className={`p-1 rounded flex flex-col items-center ${
+                                    attendance.afternoon_clock_in_selfie_status === 'approved' ? 'bg-green-100' :
+                                    attendance.afternoon_clock_in_selfie_status === 'rejected' ? 'bg-red-100' :
+                                    'hover:bg-orange-100'
+                                  }`}
+                                  title={`View Afternoon Clock In Selfie - ${attendance.afternoon_clock_in_selfie_status || 'pending'}`}
+                                >
+                                  <Camera className={`w-4 h-4 ${
+                                    attendance.afternoon_clock_in_selfie_status === 'approved' ? 'text-green-600' :
+                                    attendance.afternoon_clock_in_selfie_status === 'rejected' ? 'text-red-600' :
+                                    'text-orange-600'
+                                  }`} />
+                                  <span className="text-xs">PM In</span>
+                                </button>
+                              )}
+                              {attendance.afternoon_clock_out_selfie && (
+                                <button
+                                  onClick={() => {
+                                    setViewingSelfie({ 
+                                      image: attendance.afternoon_clock_out_selfie, 
+                                      label: 'Afternoon Clock Out',
+                                      status: attendance.afternoon_clock_out_selfie_status || 'pending',
+                                      reason: attendance.afternoon_clock_out_selfie_reason,
+                                      attendanceId: attendance.id,
+                                      sessionType: 'afternoon_clock_out'
+                                    })
+                                    setShowSelfieModal(true)
+                                  }}
+                                  className={`p-1 rounded flex flex-col items-center ${
+                                    attendance.afternoon_clock_out_selfie_status === 'approved' ? 'bg-green-100' :
+                                    attendance.afternoon_clock_out_selfie_status === 'rejected' ? 'bg-red-100' :
+                                    'hover:bg-purple-100'
+                                  }`}
+                                  title={`View Afternoon Clock Out Selfie - ${attendance.afternoon_clock_out_selfie_status || 'pending'}`}
+                                >
+                                  <Camera className={`w-4 h-4 ${
+                                    attendance.afternoon_clock_out_selfie_status === 'approved' ? 'text-green-600' :
+                                    attendance.afternoon_clock_out_selfie_status === 'rejected' ? 'text-red-600' :
+                                    'text-purple-600'
+                                  }`} />
+                                  <span className="text-xs">PM Out</span>
+                                </button>
+                              )}
+                              {!attendance.morning_clock_in_selfie && !attendance.morning_clock_out_selfie && !attendance.afternoon_clock_in_selfie && !attendance.afternoon_clock_out_selfie && (
+                                <span className="text-xs text-gray-400">No selfie</span>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {attendances.length > itemsPerPage && (
+              <div className="mt-4 flex items-center justify-between border-t pt-4">
+                <div className="text-sm text-gray-700">
+                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, attendances.length)} of {attendances.length} records
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className={`px-3 py-1 border rounded text-sm ${
+                      currentPage === 1
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-700">
+                    Page {currentPage} of {Math.ceil(attendances.length / itemsPerPage)}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(attendances.length / itemsPerPage), prev + 1))}
+                    disabled={currentPage === Math.ceil(attendances.length / itemsPerPage)}
+                    className={`px-3 py-1 border rounded text-sm ${
+                      currentPage === Math.ceil(attendances.length / itemsPerPage)
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -1234,7 +1688,7 @@ export default function Attendance() {
                             tooltip: {
                               callbacks: {
                                 label: function(context) {
-                                  return context.label + ': ' + context.parsed + '%'
+                                  return context.label + ': ' + context.parsed
                                 }
                               }
                             }
@@ -1246,15 +1700,15 @@ export default function Attendance() {
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
                     <div>
                       <p className="text-gray-600">Present</p>
-                      <p className="text-lg font-bold text-green-700">{chartData.breakdown.present}%</p>
+                      <p className="text-lg font-bold text-green-700">{chartData.breakdown.present}</p>
                     </div>
                     <div>
                       <p className="text-gray-600">Late</p>
-                      <p className="text-lg font-bold text-orange-700">{chartData.breakdown.late}%</p>
+                      <p className="text-lg font-bold text-orange-700">{chartData.breakdown.late}</p>
                     </div>
                     <div>
                       <p className="text-gray-600">Absent</p>
-                      <p className="text-lg font-bold text-red-700">{chartData.breakdown.absent}%</p>
+                      <p className="text-lg font-bold text-red-700">{chartData.breakdown.absent}</p>
                     </div>
                   </div>
                 </div>

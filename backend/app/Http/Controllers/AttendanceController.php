@@ -12,7 +12,7 @@ use Carbon\Carbon;
 class AttendanceController extends Controller
 {
     /**
-     * Clock in
+     * Clock in (supports morning and afternoon sessions)
      */
     public function clockIn(Request $request)
     {
@@ -31,34 +31,57 @@ class AttendanceController extends Controller
         }
 
         $today = Carbon::today();
+        $session = $request->input('session', 'morning'); // 'morning' or 'afternoon'
 
-        // Check if already clocked in today
-        /** @var Attendance|null $existingAttendance */
-        $existingAttendance = Attendance::where('employee_id', $employee->id)
+        // Get or create today's attendance record
+        /** @var Attendance|null $attendance */
+        $attendance = Attendance::where('employee_id', $employee->id)
             ->where('attendance_date', $today)
             ->first();
 
-        if ($existingAttendance) {
-            return response()->json(['error' => 'Already clocked in today'], 400);
+        if (!$attendance) {
+            $attendance = new Attendance([
+                'employee_id' => $employee->id,
+                'attendance_date' => $today,
+                'is_present' => true,
+            ]);
         }
 
-        /** @var Attendance $attendance */
-        $attendance = Attendance::create([
-            'employee_id' => $employee->id,
-            'attendance_date' => $today,
-            'clock_in' => Carbon::now(),
-            'clock_in_location' => $request->location ?? null,
-            'is_present' => true,
-        ]);
+        // Check session and clock in
+        if ($session === 'morning') {
+            if ($attendance->morning_clock_in) {
+                return response()->json(['error' => 'Already clocked in for morning session'], 400);
+            }
+            $attendance->morning_clock_in = Carbon::now();
+            $attendance->morning_clock_in_location = $request->location ?? null;
+            $attendance->morning_clock_in_selfie = $request->selfie ?? null;
+            // Also set main clock_in for backward compatibility
+            if (!$attendance->clock_in) {
+                $attendance->clock_in = Carbon::now();
+                $attendance->clock_in_location = $request->location ?? null;
+                $attendance->clock_in_selfie = $request->selfie ?? null;
+            }
+        } elseif ($session === 'afternoon') {
+            if ($attendance->afternoon_clock_in) {
+                return response()->json(['error' => 'Already clocked in for afternoon session'], 400);
+            }
+            $attendance->afternoon_clock_in = Carbon::now();
+            $attendance->afternoon_clock_in_location = $request->location ?? null;
+            $attendance->afternoon_clock_in_selfie = $request->selfie ?? null;
+        } else {
+            return response()->json(['error' => 'Invalid session type. Use "morning" or "afternoon"'], 400);
+        }
+
+        $attendance->save();
 
         return response()->json([
-            'message' => 'Clocked in successfully',
+            'message' => ucfirst($session) . ' clock-in successful',
             'data' => $attendance,
         ], 201);
     }
 
     /**
-     * Clock out
+     * Clock out (supports morning and afternoon sessions)
      */
     public function clockOut(Request $request)
     {
@@ -77,6 +100,7 @@ class AttendanceController extends Controller
         }
 
         $today = Carbon::today();
+        $session = $request->input('session', 'morning'); // 'morning' or 'afternoon'
 
         /** @var Attendance|null $attendance */
         $attendance = Attendance::where('employee_id', $employee->id)
@@ -87,25 +111,56 @@ class AttendanceController extends Controller
             return response()->json(['error' => 'Not clocked in today'], 400);
         }
 
-        if ($attendance->clock_out) {
-            return response()->json(['error' => 'Already clocked out today'], 400);
+        $clockOut = Carbon::now();
+
+        // Handle session-based clock out
+        if ($session === 'morning') {
+            if (!$attendance->morning_clock_in) {
+                return response()->json(['error' => 'Not clocked in for morning session'], 400);
+            }
+            if ($attendance->morning_clock_out) {
+                return response()->json(['error' => 'Already clocked out for morning session'], 400);
+            }
+            $attendance->morning_clock_out = $clockOut;
+            $attendance->morning_clock_out_location = $request->location ?? null;
+            $attendance->morning_clock_out_selfie = $request->selfie ?? null;
+            
+            // Calculate morning hours
+            $clockIn = Carbon::parse($attendance->morning_clock_in);
+            $minutesWorked = $clockIn->diffInMinutes($clockOut);
+            $attendance->morning_hours = round($minutesWorked / 60, 2);
+            
+        } elseif ($session === 'afternoon') {
+            if (!$attendance->afternoon_clock_in) {
+                return response()->json(['error' => 'Not clocked in for afternoon session'], 400);
+            }
+            if ($attendance->afternoon_clock_out) {
+                return response()->json(['error' => 'Already clocked out for afternoon session'], 400);
+            }
+            $attendance->afternoon_clock_out = $clockOut;
+            $attendance->afternoon_clock_out_location = $request->location ?? null;
+            $attendance->afternoon_clock_out_selfie = $request->selfie ?? null;
+            
+            // Calculate afternoon hours
+            $clockIn = Carbon::parse($attendance->afternoon_clock_in);
+            $minutesWorked = $clockIn->diffInMinutes($clockOut);
+            $attendance->afternoon_hours = round($minutesWorked / 60, 2);
+            
+            // Also set main clock_out for backward compatibility
+            $attendance->clock_out = $clockOut;
+            $attendance->clock_out_location = $request->location ?? null;
+            $attendance->clock_out_selfie = $request->selfie ?? null;
+        } else {
+            return response()->json(['error' => 'Invalid session type. Use "morning" or "afternoon"'], 400);
         }
 
-        $clockOut = Carbon::now();
-        $attendance->clock_out = $clockOut;
-        $attendance->clock_out_location = $request->location ?? null;
+        // Calculate total hours worked from both sessions
+        $totalHours = $attendance->morning_hours + $attendance->afternoon_hours;
+        $attendance->hours_worked = round($totalHours, 2);
 
-        // Calculate hours worked (in decimal format for precision)
-        /** @var \Carbon\Carbon $clockIn */
-        $clockIn = Carbon::parse($attendance->clock_in);
-        /** @var \DateTimeInterface $clockOut */
-        $minutesWorked = $clockIn->diffInMinutes($clockOut);
-        $hoursWorked = round($minutesWorked / 60, 2);
-        $attendance->hours_worked = $hoursWorked;
-
-        // Calculate overtime (if more than 8 hours)
-        if ($hoursWorked > 8) {
-            $attendance->overtime_hours = round($hoursWorked - 8, 2);
+        // Calculate overtime (if more than 8 hours total)
+        if ($totalHours > 8) {
+            $attendance->overtime_hours = round($totalHours - 8, 2);
         }
 
         $attendance->save();
@@ -203,6 +258,69 @@ class AttendanceController extends Controller
                 'totalActiveEmployees' => $totalActiveEmployees,
                 'lastUpdated' => Carbon::now()->toIso8601String(),
             ]
+        ]);
+    }
+
+    /**
+     * Approve selfie verification
+     */
+    public function approveSelfie(Request $request, $id)
+    {
+        $attendance = Attendance::findOrFail($id);
+        $sessionType = $request->input('session_type'); // e.g., 'morning_clock_in', 'afternoon_clock_out'
+        
+        if (!$sessionType) {
+            return response()->json(['error' => 'Session type is required'], 400);
+        }
+        
+        $statusField = $sessionType . '_selfie_status';
+        
+        // Validate field exists
+        if (!in_array($statusField, $attendance->getFillable())) {
+            return response()->json(['error' => 'Invalid session type'], 400);
+        }
+        
+        $attendance->$statusField = 'approved';
+        $attendance->save();
+        
+        return response()->json([
+            'message' => 'Selfie approved successfully',
+            'data' => $attendance
+        ]);
+    }
+
+    /**
+     * Reject selfie verification
+     */
+    public function rejectSelfie(Request $request, $id)
+    {
+        $attendance = Attendance::findOrFail($id);
+        $sessionType = $request->input('session_type'); // e.g., 'morning_clock_in', 'afternoon_clock_out'
+        $reason = $request->input('reason');
+        
+        if (!$sessionType) {
+            return response()->json(['error' => 'Session type is required'], 400);
+        }
+        
+        if (!$reason) {
+            return response()->json(['error' => 'Rejection reason is required'], 400);
+        }
+        
+        $statusField = $sessionType . '_selfie_status';
+        $reasonField = $sessionType . '_selfie_reason';
+        
+        // Validate field exists
+        if (!in_array($statusField, $attendance->getFillable())) {
+            return response()->json(['error' => 'Invalid session type'], 400);
+        }
+        
+        $attendance->$statusField = 'rejected';
+        $attendance->$reasonField = $reason;
+        $attendance->save();
+        
+        return response()->json([
+            'message' => 'Selfie rejected successfully',
+            'data' => $attendance
         ]);
     }
 }

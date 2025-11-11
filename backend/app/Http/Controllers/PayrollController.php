@@ -24,6 +24,14 @@ class PayrollController extends Controller
     {
         $query = Payroll::with(['employee.user', 'employee.department']);
 
+        // Filter archived payroll
+        if ($request->has('archived') && $request->archived === 'true') {
+            $query->onlyTrashed();
+        } elseif ($request->has('archived') && $request->archived === 'all') {
+            $query->withTrashed();
+        }
+        // Default: only active (non-archived) payroll
+
         // Filter by employee
         if ($request->has('employee_id')) {
             $query->where('employee_id', $request->employee_id);
@@ -179,23 +187,29 @@ class PayrollController extends Controller
     }
 
     /**
-     * Delete payroll (Admin only - for redoing payroll)
+     * Archive payroll (soft delete)
      */
     public function destroy($id)
     {
         $payroll = Payroll::findOrFail($id);
-        
-        // Check if payroll is locked
-        if ($payroll->is_locked) {
-            return response()->json([
-                'error' => 'Cannot delete a locked payroll. Please unlock it first.',
-            ], 403);
-        }
-
-        $payroll->delete();
+        $payroll->delete(); // Soft delete
 
         return response()->json([
-            'message' => 'Payroll deleted successfully',
+            'message' => 'Payroll archived successfully',
+        ]);
+    }
+
+    /**
+     * Restore archived payroll
+     */
+    public function restore($id)
+    {
+        $payroll = Payroll::withTrashed()->findOrFail($id);
+        $payroll->restore();
+
+        return response()->json([
+            'message' => 'Payroll restored successfully',
+            'payroll' => $payroll->load(['employee.user', 'employee.department'])
         ]);
     }
 }

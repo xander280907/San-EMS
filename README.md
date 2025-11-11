@@ -25,8 +25,7 @@ A comprehensive, full-stack Employee Management System designed specifically for
 - ✅ **Custom Deductions** - Flexible deduction system
 
 ### User Roles & Permissions
-- **Admin** - Full system access and configuration
-- **HR** - Employee and payroll management access
+- **Admin** - Full system access and configuration, employee management, payroll processing
 - **Employee** - Self-service portal for attendance, leaves, and payslips
 
 ### Technology Stack
@@ -119,11 +118,11 @@ Frontend will be available at `http://localhost:3000`
 After running database seeders:
 
 **Admin**
-- Email: `admin@ph-ems.local`
+- Email: `admin@test.local`
 - Password: `password`
 
-**HR**
-- Email: `hr@ph-ems.local`
+**Employee**
+- Email: `employee@test.local`
 - Password: `password`
 
 ## 📁 Project Structure

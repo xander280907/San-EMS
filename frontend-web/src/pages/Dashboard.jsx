@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { hasPermission, canViewAll, isEmployee, isAdmin, isHR } from '../utils/permissions'
+import { hasPermission, canViewAll, isEmployee, isAdmin } from '../utils/permissions'
 import { Users, DollarSign, Clock, Calendar, Megaphone, AlertCircle, CheckCircle, XCircle, ClockIcon, LogIn, LogOut, TrendingUp, TrendingDown, Activity, Cake, Award, ArrowUp, ArrowDown, Minus } from 'lucide-react'
 import api, { announcementAPI, leaveAPI } from '../services/api'
 import { Line, Doughnut } from 'react-chartjs-2'
@@ -68,9 +68,15 @@ export default function Dashboard() {
     fetchRecentAnnouncements()
     fetchMyLeaveRequests()
     fetchWeeklyAttendance()
-    fetchLeaveBalance()
     fetchUpcomingEvents()
   }, [])
+
+  // Fetch leave balance after stats are loaded (for admin view)
+  useEffect(() => {
+    if (stats.employees > 0 || isEmployee(user)) {
+      fetchLeaveBalance()
+    }
+  }, [stats.employees])
 
   // Fetch recent activity after other data is loaded
   useEffect(() => {
@@ -238,18 +244,40 @@ export default function Dashboard() {
       const response = await leaveAPI.getAll()
       const data = response.data?.data || response.data || []
       const leaves = Array.isArray(data) ? data : []
-      const myLeaves = leaves.filter(l => l.employee_id === user?.employee?.id)
       
-      const totalDays = 15 // Assume 15 days annual leave
-      const usedDays = myLeaves
-        .filter(l => l.status === 'approved')
-        .reduce((sum, l) => sum + (parseInt(l.days_count) || 0), 0)
-      
-      setLeaveBalance({ total: totalDays, used: usedDays, remaining: totalDays - usedDays })
+      // Check if user is admin
+      if (isAdmin(user)) {
+        // Admin: Show organization-wide statistics
+        // Calculate total approved leave days across all employees
+        const approvedDays = leaves
+          .filter(l => l.status === 'approved')
+          .reduce((sum, l) => sum + (parseInt(l.days_count) || 0), 0)
+        
+        // Assume 15 days per employee, multiply by total employees
+        const totalOrgDays = stats.employees * 15
+        const remainingDays = totalOrgDays - approvedDays
+        
+        setLeaveBalance({ 
+          total: totalOrgDays, 
+          used: approvedDays, 
+          remaining: remainingDays 
+        })
+      } else {
+        // Employee: Show personal leave balance
+        const myLeaves = leaves.filter(l => l.employee_id === user?.employee?.id)
+        
+        const totalDays = 15 // Assume 15 days annual leave
+        const usedDays = myLeaves
+          .filter(l => l.status === 'approved')
+          .reduce((sum, l) => sum + (parseInt(l.days_count) || 0), 0)
+        
+        setLeaveBalance({ total: totalDays, used: usedDays, remaining: totalDays - usedDays })
+      }
     } catch (err) {
       console.error('Error fetching leave balance:', err)
       // Set default values on error
-      setLeaveBalance({ total: 15, used: 0, remaining: 15 })
+      const defaultTotal = isAdmin(user) ? stats.employees * 15 : 15
+      setLeaveBalance({ total: defaultTotal, used: 0, remaining: defaultTotal })
     }
   }
 
@@ -459,6 +487,43 @@ export default function Dashboard() {
           <p className="text-sm text-gray-600">
             {recentAnnouncements.length > 0 ? 'new updates available' : 'all caught up'}
           </p>
+        </div>
+      </div>
+
+      {/* Modern Quick Actions - Moved to Top */}
+      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 lg:mb-10">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6">Quick Actions</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          <button 
+            onClick={() => navigate('/dashboard/attendance')}
+            className="group p-6 bg-white border-2 border-gray-100 rounded-xl hover:border-blue-500 hover:shadow-lg text-left transition-all duration-300"
+          >
+            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-500 transition-colors">
+              <Clock className="w-6 h-6 text-blue-600 group-hover:text-white group-hover:scale-110 transition-transform" />
+            </div>
+            <h3 className="font-bold text-gray-900 mb-1">Attendance</h3>
+            <p className="text-sm text-gray-600">Clock in and out</p>
+          </button>
+          <button 
+            onClick={() => navigate('/dashboard/leaves')}
+            className="group p-6 bg-white border-2 border-gray-100 rounded-xl hover:border-green-500 hover:shadow-lg text-left transition-all duration-300"
+          >
+            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-green-500 transition-colors">
+              <Calendar className="w-6 h-6 text-green-600 group-hover:text-white group-hover:scale-110 transition-transform" />
+            </div>
+            <h3 className="font-bold text-gray-900 mb-1">Request Leave</h3>
+            <p className="text-sm text-gray-600">Apply for time off</p>
+          </button>
+          <button 
+            onClick={() => navigate('/dashboard/my-payslips')}
+            className="group p-6 bg-white border-2 border-gray-100 rounded-xl hover:border-purple-500 hover:shadow-lg text-left transition-all duration-300"
+          >
+            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-500 transition-colors">
+              <DollarSign className="w-6 h-6 text-purple-600 group-hover:text-white group-hover:scale-110 transition-transform" />
+            </div>
+            <h3 className="font-bold text-gray-900 mb-1">My Payslips</h3>
+            <p className="text-sm text-gray-600">View salary history</p>
+          </button>
         </div>
       </div>
 
@@ -749,42 +814,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Modern Quick Actions */}
-      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 sm:p-6 lg:p-7">
-        <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-          <button 
-            onClick={() => navigate('/dashboard/attendance')}
-            className="group p-6 bg-white border-2 border-gray-100 rounded-xl hover:border-blue-500 hover:shadow-lg text-left transition-all duration-300"
-          >
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-500 transition-colors">
-              <Clock className="w-6 h-6 text-blue-600 group-hover:text-white group-hover:scale-110 transition-transform" />
-            </div>
-            <h3 className="font-bold text-gray-900 mb-1">Attendance</h3>
-            <p className="text-sm text-gray-600">Clock in and out</p>
-          </button>
-          <button 
-            onClick={() => navigate('/dashboard/leaves')}
-            className="group p-6 bg-white border-2 border-gray-100 rounded-xl hover:border-green-500 hover:shadow-lg text-left transition-all duration-300"
-          >
-            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-green-500 transition-colors">
-              <Calendar className="w-6 h-6 text-green-600 group-hover:text-white group-hover:scale-110 transition-transform" />
-            </div>
-            <h3 className="font-bold text-gray-900 mb-1">Request Leave</h3>
-            <p className="text-sm text-gray-600">Apply for time off</p>
-          </button>
-          <button 
-            onClick={() => navigate('/dashboard/my-payslips')}
-            className="group p-6 bg-white border-2 border-gray-100 rounded-xl hover:border-purple-500 hover:shadow-lg text-left transition-all duration-300"
-          >
-            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-500 transition-colors">
-              <DollarSign className="w-6 h-6 text-purple-600 group-hover:text-white group-hover:scale-110 transition-transform" />
-            </div>
-            <h3 className="font-bold text-gray-900 mb-1">My Payslips</h3>
-            <p className="text-sm text-gray-600">View salary history</p>
-          </button>
-        </div>
-      </div>
     </div>
   )
 
@@ -844,6 +873,45 @@ export default function Dashboard() {
             </div>
           )
         })}
+      </div>
+
+      {/* Management Quick Actions - Moved to Top */}
+      <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4">Management Quick Actions</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <button 
+            onClick={() => navigate('/dashboard/employees')}
+            className="p-5 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 text-left transition-all group"
+          >
+            <Users className="w-8 h-8 text-blue-600 mb-3 group-hover:scale-110 transition-transform" />
+            <h3 className="font-bold text-gray-800 mb-1">Manage Employees</h3>
+            <p className="text-sm text-gray-600">View and edit employee records</p>
+          </button>
+          <button 
+            onClick={() => navigate('/dashboard/leaves')}
+            className="p-5 border-2 border-gray-200 rounded-lg hover:border-orange-500 hover:bg-orange-50 text-left transition-all group"
+          >
+            <AlertCircle className="w-8 h-8 text-orange-600 mb-3 group-hover:scale-110 transition-transform" />
+            <h3 className="font-bold text-gray-800 mb-1">Approve Leaves</h3>
+            <p className="text-sm text-gray-600">Review pending leave requests</p>
+          </button>
+          <button 
+            onClick={() => navigate('/dashboard/reports')}
+            className="p-5 border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 text-left transition-all group"
+          >
+            <TrendingUp className="w-8 h-8 text-purple-600 mb-3 group-hover:scale-110 transition-transform" />
+            <h3 className="font-bold text-gray-800 mb-1">View Reports</h3>
+            <p className="text-sm text-gray-600">Access analytics and insights</p>
+          </button>
+          <button 
+            onClick={() => navigate('/dashboard/announcements')}
+            className="p-5 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 text-left transition-all group"
+          >
+            <Megaphone className="w-8 h-8 text-green-600 mb-3 group-hover:scale-110 transition-transform" />
+            <h3 className="font-bold text-gray-800 mb-1">Post Announcement</h3>
+            <p className="text-sm text-gray-600">Share updates with team</p>
+          </button>
+        </div>
       </div>
 
       {/* Charts Row */}
@@ -914,7 +982,7 @@ export default function Dashboard() {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
             <Calendar className="w-5 h-5" />
-            Leave Overview
+            {isAdmin(user) ? 'Organization Leave Overview' : 'Leave Overview'}
           </h2>
           {leaveBalance ? (
             <div className="flex flex-col items-center justify-center">
@@ -947,7 +1015,9 @@ export default function Dashboard() {
               </div>
               <div className="text-center mt-4">
                 <p className="text-3xl font-bold text-gray-800">{leaveBalance.used + leaveBalance.remaining}</p>
-                <p className="text-sm text-gray-600">total leave days</p>
+                <p className="text-sm text-gray-600">
+                  {isAdmin(user) ? 'total organization leave days' : 'total leave days'}
+                </p>
                 <div className="flex gap-4 mt-3 justify-center">
                   <div className="flex items-center gap-1">
                     <div className="w-3 h-3 rounded-full bg-amber-500"></div>
@@ -1230,43 +1300,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-        <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4">Management Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <button 
-            onClick={() => navigate('/dashboard/employees')}
-            className="p-5 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 text-left transition-all group"
-          >
-            <Users className="w-8 h-8 text-blue-600 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-bold text-gray-800 mb-1">Manage Employees</h3>
-            <p className="text-sm text-gray-600">View and edit employee records</p>
-          </button>
-          <button 
-            onClick={() => navigate('/dashboard/leaves')}
-            className="p-5 border-2 border-gray-200 rounded-lg hover:border-orange-500 hover:bg-orange-50 text-left transition-all group"
-          >
-            <AlertCircle className="w-8 h-8 text-orange-600 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-bold text-gray-800 mb-1">Approve Leaves</h3>
-            <p className="text-sm text-gray-600">Review pending leave requests</p>
-          </button>
-          <button 
-            onClick={() => navigate('/dashboard/reports')}
-            className="p-5 border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 text-left transition-all group"
-          >
-            <TrendingUp className="w-8 h-8 text-purple-600 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-bold text-gray-800 mb-1">View Reports</h3>
-            <p className="text-sm text-gray-600">Access analytics and insights</p>
-          </button>
-          <button 
-            onClick={() => navigate('/dashboard/announcements')}
-            className="p-5 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 text-left transition-all group"
-          >
-            <Megaphone className="w-8 h-8 text-green-600 mb-3 group-hover:scale-110 transition-transform" />
-            <h3 className="font-bold text-gray-800 mb-1">Post Announcement</h3>
-            <p className="text-sm text-gray-600">Share updates with team</p>
-          </button>
-        </div>
-      </div>
     </div>
   )
 

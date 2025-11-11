@@ -46,7 +46,8 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/{id}', [EmployeeController::class, 'show']);
         Route::put('/{id}', [EmployeeController::class, 'update']);
         Route::post('/{id}', [EmployeeController::class, 'update']); // For FormData uploads with _method=PUT
-        Route::delete('/{id}', [EmployeeController::class, 'destroy']);
+        Route::delete('/{id}', [EmployeeController::class, 'destroy']); // Archive
+        Route::post('/{id}/restore', [EmployeeController::class, 'restore']); // Restore archived
     });
 
     // Department routes
@@ -55,7 +56,8 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/', [DepartmentController::class, 'store']);
         Route::get('/{id}', [DepartmentController::class, 'show']);
         Route::put('/{id}', [DepartmentController::class, 'update']);
-        Route::delete('/{id}', [DepartmentController::class, 'destroy']);
+        Route::delete('/{id}', [DepartmentController::class, 'destroy']); // Archive
+        Route::post('/{id}/restore', [DepartmentController::class, 'restore']); // Restore archived
     });
 
     // Position routes
@@ -76,7 +78,8 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/employee/{employeeId}', [PayrollController::class, 'getEmployeePayrolls']);
         Route::get('/{id}/payslip', [PayrollController::class, 'generatePayslip']);
         Route::post('/{id}/unlock', [PayrollController::class, 'unlockPayroll']);
-        Route::delete('/{id}', [PayrollController::class, 'destroy']);
+        Route::delete('/{id}', [PayrollController::class, 'destroy']); // Archive
+        Route::post('/{id}/restore', [PayrollController::class, 'restore']); // Restore archived
     });
 
     // Attendance routes
@@ -86,6 +89,8 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/stats/today', [AttendanceController::class, 'todayStats']);
         Route::get('/', [AttendanceController::class, 'index']);
         Route::get('/employee/{id}', [AttendanceController::class, 'getEmployeeAttendance']);
+        Route::post('/{id}/selfie/approve', [AttendanceController::class, 'approveSelfie']);
+        Route::post('/{id}/selfie/reject', [AttendanceController::class, 'rejectSelfie']);
     });
 
     // Leave routes

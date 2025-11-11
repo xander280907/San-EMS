@@ -4,7 +4,7 @@ import DepartmentForm from '../components/departments/DepartmentForm'
 import DepartmentView from '../components/departments/DepartmentView'
 import { ToastContainer } from '../components/Toast'
 import { useToast } from '../hooks/useToast'
-import { Building, Users, UserCheck, AlertTriangle, ArrowUpDown, Search } from 'lucide-react'
+import { Building, Users, UserCheck, AlertTriangle, ArrowUpDown, Search, Archive, RotateCcw } from 'lucide-react'
 
 export default function Departments() {
   const [items, setItems] = useState([])
@@ -21,6 +21,7 @@ export default function Departments() {
   const [allDepartments, setAllDepartments] = useState([])
   const [sortBy, setSortBy] = useState('name')
   const [sortOrder, setSortOrder] = useState('asc')
+  const [archivedFilter, setArchivedFilter] = useState('active') // 'active', 'archived', 'all'
   const [stats, setStats] = useState({
     totalDepartments: 0,
     totalEmployees: 0,
@@ -48,7 +49,7 @@ export default function Departments() {
 
   useEffect(() => {
     fetchDepartments()
-  }, [page, search, managerFilter, departmentNameFilter])
+  }, [page, search, managerFilter, departmentNameFilter, archivedFilter])
 
   const fetchEmployees = async () => {
     try {
@@ -77,6 +78,13 @@ export default function Departments() {
       const params = { page, per_page: perPage }
       if (search) params.search = search
       if (managerFilter) params.has_manager = managerFilter
+      // Add archived filter
+      if (archivedFilter === 'archived') {
+        params.archived = 'true'
+      } else if (archivedFilter === 'all') {
+        params.archived = 'all'
+      }
+      // Default: active only (no archived param)
       const res = await departmentAPI.getAll(params)
       const raw = res.data
       const data = raw?.data || raw || []
@@ -112,15 +120,29 @@ export default function Departments() {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this departmen? This action cannot be undone.')) return
+  const handleArchive = async (id) => {
+    if (!confirm('Archive this department? You can restore it later from the Archived tab.')) return
     setActionLoading(true)
     try {
       await departmentAPI.delete(id)
-      toast.success('Department deleted successfully')
+      toast.success('Department archived successfully!')
       await fetchDepartments()
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Failed to delete department')
+      toast.error(e.response?.data?.error || 'Failed to archive department')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleRestore = async (id) => {
+    if (!confirm('Restore this department?')) return
+    setActionLoading(true)
+    try {
+      await departmentAPI.restore(id)
+      toast.success('Department restored successfully!')
+      await fetchDepartments()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Failed to restore department')
     } finally {
       setActionLoading(false)
     }
@@ -305,6 +327,43 @@ export default function Departments() {
         </div>
       </div>
 
+      {/* Archive Filter Tabs */}
+      <div className="bg-white rounded-lg shadow mb-4 p-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setArchivedFilter('active'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              archivedFilter === 'active' 
+                ? 'bg-blue-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Active Departments
+          </button>
+          <button
+            onClick={() => { setArchivedFilter('archived'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+              archivedFilter === 'archived' 
+                ? 'bg-orange-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Archive className="w-4 h-4" />
+            Archived
+          </button>
+          <button
+            onClick={() => { setArchivedFilter('all'); setPage(1); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              archivedFilter === 'all' 
+                ? 'bg-gray-600 text-white' 
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            All Departments
+          </button>
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -393,9 +452,33 @@ export default function Departments() {
                     <td className="px-4 py-3 text-sm text-gray-700">{dept.description || '-'}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button className="px-3 py-1 border rounded hover:bg-gray-50" onClick={() => setShowView(dept)}>View</button>
-                        <button className="px-3 py-1 border rounded hover:bg-gray-50" onClick={() => { setShowEdit(dept); setServerErrors(null) }}>Edit</button>
-                        <button className="px-3 py-1 border rounded hover:bg-red-50 text-red-700" disabled={actionLoading} onClick={() => handleDelete(dept.id)}>Delete</button>
+                        <button className="px-3 py-1 border rounded hover:bg-gray-50 flex items-center gap-1" onClick={() => setShowView(dept)}>
+                          View
+                        </button>
+                        {!dept.deleted_at && (
+                          <button className="px-3 py-1 border rounded hover:bg-blue-50 text-blue-700" onClick={() => { setShowEdit(dept); setServerErrors(null) }}>
+                            Edit
+                          </button>
+                        )}
+                        {dept.deleted_at ? (
+                          <button 
+                            className="px-3 py-1 border rounded hover:bg-green-50 text-green-700 flex items-center gap-1" 
+                            disabled={actionLoading} 
+                            onClick={() => handleRestore(dept.id)}
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Restore
+                          </button>
+                        ) : (
+                          <button 
+                            className="px-3 py-1 border rounded hover:bg-orange-50 text-orange-700 flex items-center gap-1" 
+                            disabled={actionLoading} 
+                            onClick={() => handleArchive(dept.id)}
+                          >
+                            <Archive className="w-3 h-3" />
+                            Archive
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

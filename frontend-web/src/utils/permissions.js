@@ -3,25 +3,24 @@
 
 export const ROLES = {
   ADMIN: 'admin',
-  HR: 'hr',
   EMPLOYEE: 'employee'
 }
 
 // Define which roles can access which routes/features
 export const PERMISSIONS = {
   // Dashboard - everyone can access
-  dashboard: [ROLES.ADMIN, ROLES.HR, ROLES.EMPLOYEE],
+  dashboard: [ROLES.ADMIN, ROLES.EMPLOYEE],
   
-  // Employee management - admin and HR only
-  employees: [ROLES.ADMIN, ROLES.HR],
-  employeesCreate: [ROLES.ADMIN, ROLES.HR],
-  employeesEdit: [ROLES.ADMIN, ROLES.HR],
+  // Employee management - admin only
+  employees: [ROLES.ADMIN],
+  employeesCreate: [ROLES.ADMIN],
+  employeesEdit: [ROLES.ADMIN],
   employeesDelete: [ROLES.ADMIN],
   
-  // Payroll - admin and HR can access and process, only admin can unlock/delete
-  payroll: [ROLES.ADMIN, ROLES.HR],
-  payrollCreate: [ROLES.ADMIN, ROLES.HR],
-  payrollEdit: [ROLES.ADMIN, ROLES.HR],
+  // Payroll - admin only
+  payroll: [ROLES.ADMIN],
+  payrollCreate: [ROLES.ADMIN],
+  payrollEdit: [ROLES.ADMIN],
   payrollUnlock: [ROLES.ADMIN],
   payrollDelete: [ROLES.ADMIN],
   
@@ -29,28 +28,28 @@ export const PERMISSIONS = {
   myPayslips: [ROLES.EMPLOYEE],
   
   // Profile - everyone can view and edit their own profile
-  profile: [ROLES.ADMIN, ROLES.HR, ROLES.EMPLOYEE],
+  profile: [ROLES.ADMIN, ROLES.EMPLOYEE],
   
-  // Attendance - everyone can view their own, admin and HR can view all
-  attendance: [ROLES.ADMIN, ROLES.HR, ROLES.EMPLOYEE],
-  attendanceViewAll: [ROLES.ADMIN, ROLES.HR],
+  // Attendance - everyone can view their own, admin can view all
+  attendance: [ROLES.ADMIN, ROLES.EMPLOYEE],
+  attendanceViewAll: [ROLES.ADMIN],
   
-  // Leaves - everyone can request, admin and HR can approve
-  leaves: [ROLES.ADMIN, ROLES.HR, ROLES.EMPLOYEE],
-  leavesApprove: [ROLES.ADMIN, ROLES.HR],
+  // Leaves - everyone can request, admin can approve
+  leaves: [ROLES.ADMIN, ROLES.EMPLOYEE],
+  leavesApprove: [ROLES.ADMIN],
   
-  // Departments - admin and HR only
-  departments: [ROLES.ADMIN, ROLES.HR],
+  // Departments - admin only
+  departments: [ROLES.ADMIN],
   
-  // Announcements - everyone can view, admin and HR can create
-  announcements: [ROLES.ADMIN, ROLES.HR, ROLES.EMPLOYEE],
-  announcementsCreate: [ROLES.ADMIN, ROLES.HR],
+  // Announcements - everyone can view, admin can create
+  announcements: [ROLES.ADMIN, ROLES.EMPLOYEE],
+  announcementsCreate: [ROLES.ADMIN],
   
-  // Recruitment - admin and HR only
-  recruitment: [ROLES.ADMIN, ROLES.HR],
+  // Recruitment - admin only
+  recruitment: [ROLES.ADMIN],
   
-  // Reports - admin and HR only
-  reports: [ROLES.ADMIN, ROLES.HR],
+  // Reports - admin only
+  reports: [ROLES.ADMIN],
 }
 
 /**
@@ -75,12 +74,6 @@ export const isAdmin = (user) => {
   return user?.role?.toLowerCase() === ROLES.ADMIN
 }
 
-/**
- * Check if user is HR
- */
-export const isHR = (user) => {
-  return user?.role?.toLowerCase() === ROLES.HR
-}
 
 /**
  * Check if user is employee
@@ -90,8 +83,8 @@ export const isEmployee = (user) => {
 }
 
 /**
- * Check if user can view all data (admin or HR)
+ * Check if user can view all data (admin only)
  */
 export const canViewAll = (user) => {
-  return isAdmin(user) || isHR(user)
+  return isAdmin(user)
 }
